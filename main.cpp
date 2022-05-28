@@ -48,10 +48,12 @@ static void save_buffer(std::ofstream& ofs, const uint8_t* pBuffer, size_t buffe
     ofs.write((char*)pBuffer, bufferSize);
 }
 
-static void c2p(uint8_t* pBuffer, size_t bufferSize, const Image& image)
+static void c2p(uint8_t* pBuffer, size_t bufferSize, Image& image)
 {
     assert(image.columns() * image.rows() == bufferSize);
 
+    const PixelPacket* pixelPackets = image.getPixels(0, 0, image.columns(), image.rows());
+    (void)pixelPackets;
     const IndexPacket* pIndexPackets = image.getConstIndexes();
 
     for (size_t y = 0; y < image.rows(); ++y) {
@@ -71,7 +73,23 @@ static void c2p(uint8_t* pBuffer, size_t bufferSize, const Image& image)
                 planes[7] |= ((paletteIndex >> 7) & 0x01) << (15 - i);
             }
 
-            std::memcpy(pBuffer + y * image.columns() + x, planes, sizeof(planes));
+            uint8_t* p = pBuffer + y * image.columns() + x;
+            *p++ = planes[0] >> 8;
+            *p++ = planes[0];
+            *p++ = planes[1] >> 8;
+            *p++ = planes[1];
+            *p++ = planes[2] >> 8;
+            *p++ = planes[2];
+            *p++ = planes[3] >> 8;
+            *p++ = planes[3];
+            *p++ = planes[4] >> 8;
+            *p++ = planes[4];
+            *p++ = planes[5] >> 8;
+            *p++ = planes[5];
+            *p++ = planes[6] >> 8;
+            *p++ = planes[6];
+            *p++ = planes[7] >> 8;
+            *p++ = planes[7];
         }
     }
 }
