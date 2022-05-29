@@ -3,28 +3,61 @@ using namespace Magick;
 
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <map>
+#include <set>
 #include <sstream>
+#include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "helpers.h"
 #include "palette.h"
 
 // defaults
-static size_t chunkyBits  = 0;   // 4, 8, 16, 24, 32 or 0 (if disabled)
-static size_t paletteBits = 24; // 9, 12, 18, 24 or 0 (if chunkyBits >= 16)
-static size_t planesCount = 8;  // 1, 2, 4, 8 or 0 (if chunkyBits != 0)
-static bool stCompatible  = false;  // if true, use the ST/E palette registers
+static size_t chunkyBits;   // 4, 8, 16, 24, 32 or 0 (if disabled)
+static size_t paletteBits;  // 9, 12, 18, 24 or 0 (if chunkyBits >= 16)
+static size_t planesCount;  // 1, 2, 4, 8 or 0 (if chunkyBits != 0)
+static bool stCompatible;   // if true, use the ST/E palette registers
 // TODO: "convert" = convert into desired bit depth
 
+static const std::map<std::string, std::pair<std::set<int>, size_t&>> allowedValues = {
+    { "-chunky", { { 4, 8, 16, 24, 32 }, chunkyBits  } },
+    { "-pal",    { { 9, 12, 18, 24 },    paletteBits } },
+    { "-planes", { { 1, 2, 4, 8 },       planesCount } }
+};
+
+static void print_help(const char* name)
+{
+    std::cerr << "Usage: " << name << " [-chunky <num>] [-planes <num>] [-palette <bits>] [-st] <image file>" << std::endl
+              << "       -chunky:  output into chunky pixels (4, 8, 16, 24, 32 bits per pixel) [default 0]" << std::endl
+              << "       -planes:  output into planar words (1, 2, 4, 8) [default 8]" << std::endl
+              << "       -pal:     number of bits per palette entry for planar modes (9, 12, 18, 24) [default 24]" << std::endl
+              << "       -st:      output palette in the ST/E-specific format (only 9/12-bit palette) [default false]" << std::endl;
+}
+
+static std::string get_filename_ext()
+{
+    if (planesCount) {
+        return (std::ostringstream() << "bp" << planesCount).str();
+    } else if (chunkyBits) {
+        return (std::ostringstream() << "c" << std::setw(2) << std::setfill('0') << chunkyBits).str();
+    } else {
+        throw std::invalid_argument("Neither chunky not planar specified");
+    }
+}
+
+// TODO: flags (chunky, ste/falcon)
 static void save_header(std::ofstream& ofs, const Image& image)
 {
     // ID
-    ofs.put(planesCount + '0');
     ofs.write("BPL", 3);
+    ofs.put(planesCount + '0');
     // width
     const uint16_t width = image.columns();
     ofs.put(width >> 8);    // MSB
@@ -36,9 +69,9 @@ static void save_header(std::ofstream& ofs, const Image& image)
 }
 
 template<typename T>
-static void save_palette(std::ofstream& ofs, const Image& image)
+static void save_palette(std::ofstream& ofs, const Image& image, const size_t paletteSize)
 {
-    std::vector<T> pal(1 << planesCount);
+    std::vector<T> pal(paletteSize);
 
     // yes, the getter is non-const, sigh...
     for (size_t i = 0; i < const_cast<Image&>(image).colorMapSize(); ++i) {
@@ -147,17 +180,64 @@ static void c2p(std::vector<T>& buffer, const Image& image)
 
 int main(int argc, char* argv[])
 {
-    //if (argc != 2)
-    //    return EXIT_FAILURE;
-    (void)argc;
+    if (argc < 2 || argc > 9) {
+        print_help(argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    std::string outputFilename;
+    size_t paletteSize = 0;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+
+        // last argument => it's a filename
+        if (i == argc-1) {
+            // do some sanity checks first
+            if (chunkyBits && planesCount) {
+                std::cerr << "Can't combine chunky and planar" << std::endl;
+                return EXIT_FAILURE;
+            }
+
+            // defaults
+            if (!chunkyBits && !planesCount) {
+                planesCount = 8;
+            }
+
+            if (!paletteBits) {
+                paletteBits = 24;
+            }
+
+            outputFilename = arg.substr(0, arg.find_last_of('.')) + "." + get_filename_ext();
+            continue;
+        }
+
+        // flags
+        if (arg == "-st") {
+            stCompatible = true;
+            continue;
+        }
+
+        // pairs
+        i++;
+
+        auto it = allowedValues.find(arg);
+        if (it == allowedValues.end()
+                || i == argc || i+1 == argc
+                || it->second.first.find(std::atoi(argv[i])) == it->second.first.end()) {
+            print_help(argv[0]);
+            return EXIT_FAILURE;
+        }
+
+        it->second.second = std::atoi(argv[i]);
+    }
 
     InitializeMagick(*argv);
 
     Image image;
     try {
         image.quiet(false);
-        //image.read(argv[1]);
-        image.read("/home/mikro/projects/magick_test/illumn2.png");
+        image.read(argv[argc-1]);
 
         if (image.type() != PaletteType) {
             std::cerr << "Not a palette type" << std::endl;
@@ -169,36 +249,45 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (image.columns() % 16 != 0) {
-            std::cerr << "Width must be divisible by 16" << std::endl;
-            return EXIT_FAILURE;
+        if (planesCount) {
+            paletteSize = 1 << planesCount;
+        } else if (chunkyBits && chunkyBits <= 8) {
+            paletteSize = 1 << chunkyBits;
         }
 
-        planesCount = 8;
+        if (paletteSize) {
+            if (image.colorMapSize() > paletteSize) {
+                std::cerr << "Color map must have less or equal than " << paletteSize << " entries" << std::endl;
+                return EXIT_FAILURE;
+            }
 
-        if (image.colorMapSize() > (size_t)(1 << planesCount)) {
-            std::cerr << "Color map must have fewer than " << (1 << planesCount) << " entries" << std::endl;
-            return EXIT_FAILURE;
+            if (image.columns() % 16 != 0) {
+                std::cerr << "Width must be divisible by 16" << std::endl;
+                return EXIT_FAILURE;
+            }
         }
 
-        std::ofstream ofs("/home/mikro/projects/magick_test/illumn2.8bp", std::ofstream::binary);
+        std::ofstream ofs(outputFilename, std::ofstream::binary);
         if (!ofs) {
             std::cerr << "Opening destination file failed" << std::endl;
             return EXIT_FAILURE;
         }
 
-        std::cout << image.columns() << "x" << image.rows() << "@" << image.totalColors() << std::endl;
-
         save_header(ofs, image);
-        if (chunkyBits <= 8) {  // that includes the disabled state
+        if (paletteSize) {
             if (!stCompatible)
-                save_palette<FalconPaletteEntry>(ofs, image);
+                save_palette<FalconPaletteEntry>(ofs, image, paletteSize);
             else
-                save_palette<StePaletteEntry>(ofs, image);
+                save_palette<StePaletteEntry>(ofs, image, paletteSize);
         }
 
         std::vector<uint8_t> atariImage(image.rows() * image.columns());
-        c2p(atariImage, image);
+        if (!chunkyBits) {
+            c2p(atariImage, image);
+        } else {
+            // TODO
+        }
+
         save_buffer(ofs, atariImage);
 
         ofs.close();
@@ -208,6 +297,10 @@ int main(int argc, char* argv[])
         std::cerr << "Caught exception: " << ex.what() << std::endl;
         return EXIT_FAILURE;
     }
+
+    std::cout << "File " << outputFilename
+              << " (" << image.columns() << "x" << image.rows() << "@" << image.totalColors() << ") "
+              << "has been saved." << std::endl;
 
     return EXIT_SUCCESS;
 }
