@@ -1,5 +1,5 @@
 TEMPLATE = app
-CONFIG += console c++11
+CONFIG += console c++17
 CONFIG -= app_bundle
 CONFIG -= qt
 
@@ -12,4 +12,6 @@ QMAKE_LFLAGS   += $$system(GraphicsMagick++-config --ldflags)
 QMAKE_LIBS     += $$system(GraphicsMagick++-config --libs)
 
 HEADERS += \
+    bitfield.h \
+    helpers.h \
     palette.h

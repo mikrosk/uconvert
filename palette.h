@@ -3,11 +3,28 @@
 
 #include <cstdint>
 
-struct FalconPaletteEntry {
-    unsigned char r;
-    unsigned char g;
-    unsigned char unused;
-    unsigned char b;
-} __attribute__((packed));
+#include "bitfield.h"
+
+// RRRRRRrr GGGGGGgg 00000000 BBBBBBbb
+BEGIN_BITFIELD_TYPE(FalconPaletteEntry, uint32_t)
+    ADD_BITFIELD_MEMBER(r765432, 26, 6)
+    ADD_BITFIELD_MEMBER(r10,     24, 2)
+    ADD_BITFIELD_MEMBER(g765432, 18, 6)
+    ADD_BITFIELD_MEMBER(g10,     16, 2)
+    ADD_BITFIELD_MEMBER(unused,   8, 8)
+    ADD_BITFIELD_MEMBER(b765432,  2, 6)
+    ADD_BITFIELD_MEMBER(b10,      0, 2)
+END_BITFIELD_TYPE()
+
+// 0000 rRRR gGGG bBBB
+BEGIN_BITFIELD_TYPE(StePaletteEntry, uint16_t)
+    ADD_BITFIELD_MEMBER(unused, 12, 4)
+    ADD_BITFIELD_MEMBER(r0,     11, 1)
+    ADD_BITFIELD_MEMBER(r321,    8, 3)
+    ADD_BITFIELD_MEMBER(g0,      7 ,1)
+    ADD_BITFIELD_MEMBER(g321,    4, 3)
+    ADD_BITFIELD_MEMBER(b0,      3, 1)
+    ADD_BITFIELD_MEMBER(b321,    0, 3)
+END_BITFIELD_TYPE()
 
 #endif // PALETTE_H
