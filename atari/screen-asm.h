@@ -6,6 +6,7 @@
 extern void asm_screen_save(void);
 extern void asm_screen_restore(void);
 extern void asm_screen_set_vram(const void* pScreen);
-extern void asm_screen_set_palette(const uint32_t* pPalette);
+extern void asm_screen_set_falcon_palette(const uint32_t* pPalette);
+extern void asm_screen_set_ste_palette(const uint16_t* pPalette);
 
 #endif

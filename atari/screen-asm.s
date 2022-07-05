@@ -1,7 +1,8 @@
 		xdef	_asm_screen_save
 		xdef	_asm_screen_restore
 		xdef	_asm_screen_set_vram
-		xdef	_asm_screen_set_palette
+		xdef	_asm_screen_set_falcon_palette
+		xdef	_asm_screen_set_ste_palette
 
 ; ------------------------------------------------------
 		section	text
@@ -130,15 +131,26 @@ _asm_screen_set_vram:
 		move.b	d1,$ffff820d.w			;
 .skip:		rts
 
-; extern void asm_screen_set_palette(const uint32_t* pPalette);
+; extern void asm_screen_set_falcon_palette(const uint32_t* pPalette);
 ;
-_asm_screen_set_palette:
+_asm_screen_set_falcon_palette:
 		movea.l	(4,sp),a0
 		lea	$ffff9800.w,a1
 		moveq	#128-1,d0
 
 .loop:		move.l	(a0)+,(a1)+
 		move.l	(a0)+,(a1)+
+		dbra	d0,.loop
+		rts
+
+; extern void asm_screen_set_ste_palette(const uint16_t* pPalette);
+;
+_asm_screen_set_ste_palette:
+		movea.l	(4,sp),a0
+		lea	$ffff8240.w,a1
+		moveq	#16/2-1,d0
+
+.loop:		move.l	(a0)+,(a1)+
 		dbra	d0,.loop
 		rts
 
