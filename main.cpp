@@ -246,7 +246,9 @@ int main(int argc, char* argv[])
         if (*paletteBits) {
             if ((*stCompatiblePalette && image.colorMapSize() > 16) || (!*stCompatiblePalette && image.colorMapSize() > 256))
                 throw std::runtime_error(
-                        (std::ostringstream() << "Color map must have less or equal than 16/256 entries (currently: " << image.colorMapSize() << ").").str());
+                        (std::ostringstream() << "Color map must have less or equal than "
+                         << (*stCompatiblePalette ? 16 :256)
+                         << " entries (currently: " << image.colorMapSize() << ").").str());
 
             if (image.columns() % 16 != 0)
                 throw std::runtime_error("Width must be divisible by 16.");

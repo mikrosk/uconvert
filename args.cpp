@@ -81,7 +81,7 @@ std::string parse_arguments(int argc, char* argv[])
             if (!bytesPerChunk.has_value())
                 bytesPerChunk = DEFAULT_BYTES_PER_CHUNK;
 
-            if (!paletteBits.has_value() && *bitsPerPixel && *bitsPerPixel <= 8)
+            if (!paletteBits.has_value() && *bitsPerPixel <= 8) // either not set or less than 8bpp
                 paletteBits = DEFAULT_PALETTE_BITS;
 
             if (!stCompatiblePalette.has_value())
@@ -105,6 +105,9 @@ std::string parse_arguments(int argc, char* argv[])
 
             if (!*bytesPerChunk && *packedChunks)
                 throw std::invalid_argument("'-packed' requires chunky format (bpc > 0).");
+
+            if (*bytesPerChunk && !*bitsPerPixel)
+                throw std::invalid_argument("-bpc requires bpp > 0.");
 
             if (*bytesPerChunk && *bitsPerPixel/8 > *bytesPerChunk)
                 throw std::invalid_argument("bpp/8 > bpc.");
