@@ -16,6 +16,7 @@ std::optional<uint16_t>   paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPe
 std::optional<bool>       stCompatiblePalette;  // if true, use the ST/E palette registers
 std::optional<bool>       packedChunks;         // if true, pack pixels into more than one chunk
 // TODO: "convert" = convert into desired bit depth
+// TODO: chunky 6bpp?
 // cat picture.gif | giftopnm | pnmquant 16 | ppmtoneo > picture.neo
 
 // defaults

@@ -25,18 +25,13 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
     ofs.put(VERSION >> 8);
     ofs.put(VERSION & 0xff);
     // flags: bit 15-8 7 6 5 4 3 2 1 0
-    //                           | | |
-    //                           | +-+- 00: no palette
-    //                           |      01: ST/E compatible palette
-    //                           |      10: Falcon compatible palette
-    //                           |
-    //                           +----- 0: planar words
-    //                                  1: chunky
+    //                             | |
+    //                             +-+- 00: no palette
+    //                                  01: ST/E compatible palette
+    //                                  10: Falcon compatible palette
     uint16_t flags = 0;
     if (*paletteBits)
         flags |= (*stCompatiblePalette ? 0b01 : 0b10) << 0;
-    if (*bytesPerChunk)
-        flags |= 1 << 2;
 
     ofs.put(flags >> 8);
     ofs.put(flags);

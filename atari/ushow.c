@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <mint/cookie.h>
 #include <mint/falcon.h>
 #include <mint/osbind.h>
 
@@ -13,33 +14,72 @@
 // TODO: c2p (BPLSIZE in the Kalms routines should be set to xres*yres/8)
 
 typedef struct {
-    char	id[5];
-    uint16_t	version;
-    uint16_t	flags;
-    uint8_t	bitsPerPixel;
-    uint8_t	pixelsPerChunk;
-    uint8_t	bytesPerChunk;
+    char        id[5];
+    uint16_t    version;
+    uint16_t    flags;
+    uint8_t     bitsPerPixel;
+    uint8_t     pixelsPerChunk;
+    uint8_t     bytesPerChunk;
 } __attribute__((packed)) FileHeader;
 
 typedef enum {
-    PaletteTypeNone, 
+    PaletteTypeNone,
     PaletteTypeSte,
     PaletteTypeFalcon
 } PaletteType;
 
+typedef enum {
+    VdoValueST     = 0x0000,
+    VdoValueSTE    = 0x0001,
+    VdoValueTT     = 0x0002,
+    VdoValueFalcon = 0x0003
+} VdoValue;
+
 static void print_help()
 {
-    fprintf(stderr, "Usage: ushow.ttp <filename.ext>\n");
+    fprintf(stderr, "Usage: ushow.ttp [-c2p] <filename.ext>\n");
     fprintf(stderr, "Press enter to exit.\n");
     getchar();
     exit(EXIT_FAILURE);
 }
 
+static uint8_t current_st_shifter;
+static void get_current_st_shifter()
+{
+    current_st_shifter = *((volatile uint8_t*)0xffff8260);
+}
+
+static uint16_t current_tt_shifter;
+static void get_current_tt_shifter()
+{
+    current_tt_shifter = *((volatile uint16_t*)0xffff8262);
+}
+
 int main(int argc, char* argv[])
 {
-    if (argc != 2) {
+    if (argc < 2 || argc > 3) {
         print_help();
     }
+
+    bool c2p = false;
+    if (argc == 3) {
+        if (strcmp(argv[1], "-c2p") == 0)
+            c2p = true;
+        else
+            print_help();
+    }
+
+    long vdo_val = VdoValueST << 16;
+    Getcookie(C__VDO, &vdo_val);
+    vdo_val >>= 16;	// interested in the upper word only
+
+    if (vdo_val < VdoValueST || vdo_val > VdoValueFalcon) {
+        fprintf(stderr, "Not an Atari compatible video.\n");
+        getchar();
+        return EXIT_FAILURE;
+    }
+
+    bool supervidel = Getcookie(C_SupV, NULL) == C_FOUND && VgetMonitor() == MON_VGA;
 
     FILE* f = fopen(argv[1], "rb");
     if (!f) {
@@ -67,26 +107,186 @@ int main(int argc, char* argv[])
     else if ((file_header.flags & 0b11) == 0b10)
         palette_type = PaletteTypeFalcon;
     
-    //bool chunky_pixels = !!(file_header.flags & 0b100);
-    
     uint16_t width = 0;
     uint16_t height = 0;
     if (file_header.bitsPerPixel > 0) {
         fread(&width, sizeof(width), 1, f);
         fread(&height, sizeof(height), 1, f);
     }
-    
+
+    if (palette_type == PaletteTypeNone && (width == 0 || height == 0)) {
+        fprintf(stdout, "No palette and no bitmap data - nothing to do.\n");
+        getchar();
+        return EXIT_SUCCESS;
+    }
+
     uint16_t ste_palette[16];
     uint32_t falcon_palette[256];
     if (palette_type == PaletteTypeSte) {
         fread(ste_palette, sizeof(ste_palette[0]), 16, f);
     } else if (palette_type == PaletteTypeFalcon) {
         fread(falcon_palette, sizeof(falcon_palette[0]), 256, f);
-    }    
+    }
 
+    size_t screen_width  = 0;
+    size_t screen_height = 0;
+    size_t screen_bpp    = 0;
+    int8_t st_shifter    = -1;
+    int16_t tt_shifter   = -1;
+    int16_t falcon_mode  = -1;
+
+    if (vdo_val == VdoValueST || vdo_val == VdoValueSTE) {
+        Supexec(get_current_st_shifter);
+        bool mono_monitor = (current_st_shifter & 0b11) == 0b10;
+
+        switch (file_header.bitsPerPixel) {
+        case 1:
+            if (mono_monitor && file_header.pixelsPerChunk == file_header.bytesPerChunk*8) {
+                // packed chunks = planar if 1bpp
+                screen_width  = 640;
+                screen_height = 400;
+                screen_bpp    = 1;
+                st_shifter    = 0b10;
+            }
+            break;
+        case 2:
+            if (!mono_monitor && file_header.bytesPerChunk == 0) {
+                // planar only
+                screen_width  = 640;
+                screen_height = 200;
+                screen_bpp    = 2;
+                st_shifter    = 0b01;
+            }
+            break;
+        case 4:
+            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
+                screen_width  = 320;
+                screen_height = 200;
+                screen_bpp    = 4;
+                st_shifter    = 0b00;
+            }
+            break;
+        }
+    } else if (vdo_val == VdoValueTT) {
+        Supexec(get_current_tt_shifter);
+        bool mono_monitor = (current_tt_shifter & 0b0000011100000000) == 0b0000011000000000;
+
+        switch (file_header.bitsPerPixel) {
+        case 1:
+            if (file_header.pixelsPerChunk == file_header.bytesPerChunk*8) {
+                // packed chunks = planar if 1bpp
+                screen_width  = mono_monitor ? 1280 : 640;
+                screen_height = mono_monitor ? 960  : 400;
+                screen_bpp    = 1;  // duochrome
+                tt_shifter    = mono_monitor ? 0b0000011000000000 : 0b0000001000000000;
+            }
+            break;
+        case 2:
+            if (!mono_monitor && file_header.bytesPerChunk == 0) {
+                // planar only
+                screen_width  = 640;
+                screen_height = 200;
+                screen_bpp    = 2;
+                tt_shifter    = 0b0000000100000000;
+            }
+            break;
+        case 4:
+            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
+                screen_width  = 320;
+                screen_height = 200;
+                screen_bpp    = 4;
+                tt_shifter    = 0b0000000000000000;
+            }
+            break;
+        case 8:
+            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
+                screen_width  = 320;
+                screen_height = 480;
+                screen_bpp    = 8;
+                tt_shifter    = 0b0000011100000000;
+            }
+            break;
+        }
+    } else if (vdo_val == VdoValueFalcon) {
+        bool mono_monitor = VgetMonitor() == MON_MONO;
+
+        switch (file_header.bitsPerPixel) {
+        case 1:
+            if (file_header.pixelsPerChunk == file_header.bytesPerChunk*8) {
+                // packed chunks = planar if 1bpp
+                // TODO: can't we really set 320x2[04]0 @ 1bpp in falcon mode?
+                screen_width  = 640;
+                screen_height = palette_type == PaletteTypeSte || VgetMonitor() != MON_VGA ? 400 : 480;
+                screen_bpp    = 1;  // duochrome
+                falcon_mode   = BPS1;
+            }
+            break;
+        case 2:
+            if (!mono_monitor && file_header.bytesPerChunk == 0) {
+                // planar only
+                screen_width  = palette_type == PaletteTypeSte ? 640 : 320;
+                screen_height = palette_type == PaletteTypeSte || VgetMonitor() != MON_VGA ? 200 : 240;
+                screen_bpp    = 2;
+                falcon_mode   = BPS2;
+            }
+            break;
+        case 4:
+            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
+                screen_width  = 320;
+                screen_height = palette_type == PaletteTypeSte || VgetMonitor() != MON_VGA ? 200 : 240;
+                screen_bpp    = 4;
+                falcon_mode   = BPS4;
+            }
+            break;
+        case 8:
+            if (!mono_monitor && (file_header.bytesPerChunk == 0 || ((c2p || supervidel) && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
+                screen_width  = 320;
+                screen_height = VgetMonitor() != MON_VGA ? 200 : 240;
+                screen_bpp    = 8;
+                falcon_mode   = supervidel ? BPS8C : BPS8;
+            }
+            break;
+        case 16:
+            if (!mono_monitor && file_header.bytesPerChunk / file_header.pixelsPerChunk == 2) {
+                screen_width  = 320;
+                screen_height = VgetMonitor() != MON_VGA ? 200 : 240;
+                screen_bpp    = 16;
+                falcon_mode   = BPS16;
+            }
+            break;
+        case 32:
+            if (supervidel && file_header.bytesPerChunk / file_header.pixelsPerChunk == 4) {
+                screen_width  = 320;
+                screen_height = 240;
+                screen_bpp    = 32;
+                falcon_mode   = SVEXT | BPS32;
+            }
+            break;
+        }
+
+        if (falcon_mode != -1) {
+            uint16_t old_mode = VsetMode(VM_INQUIRE);
+
+            if (screen_width == 640)
+                falcon_mode |= COL80;
+
+            falcon_mode |= (old_mode & VGA);
+            falcon_mode |= (old_mode & PAL);
+
+            if (palette_type == PaletteTypeSte)
+                falcon_mode |= STMODES;
+
+            if (((falcon_mode & VGA) && screen_height == 240) || (!(falcon_mode & ~VGA) && screen_height == 400))
+                falcon_mode |= VERTFLAG;
+        }
+    }
+
+    char* source_bitmap = NULL; // for chunky formats
     char* bitmap = NULL;
     char* bitmap_aligned = NULL;
     if (file_header.bitsPerPixel > 0) {
+        // TODO: this should be either 320x200 or x2 (screen size) and copy (maybe Falcon RGB overscan)
+        // if bitmap > screen, fread should reflect this (reduced width loaded; OR... scrolling)
         bitmap = (char*)Mxalloc(width * height + 15, MX_STRAM);
         if (!bitmap) {
             fprintf(stderr, "Not enough ST-RAM\n");
@@ -99,11 +299,11 @@ int main(int argc, char* argv[])
     }
 
     fclose(f);
-
+    
     int32_t ssp = Super(0L);
 
-    asm_screen_save();
-
+    asm_screen_save();	// TODO: does the save works on ST/E, too?
+    
     VsetMode(0x23); // 320x240x256c@60 Hz
 
     asm_screen_set_vram(bitmap_aligned);
