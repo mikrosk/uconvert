@@ -92,6 +92,7 @@ std::string parse_arguments(int argc, char* argv[])
                 packedChunks = DEFAULT_PACKED_CHUNKS;
 
             // do some sanity checks
+            // TODO: 2bpp must be st compatible
             if (*bitsPerPixel > 8 && *paletteBits)
                 throw std::invalid_argument("Can't have palette with '-bpp' > 8.");
 

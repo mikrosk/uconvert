@@ -24,7 +24,8 @@ typedef struct {
 
 typedef enum {
     PaletteTypeNone,
-    PaletteTypeSte,
+    PaletteTypeSTE,
+    PaletteTypeTT,  // TODO
     PaletteTypeFalcon
 } PaletteType;
 
@@ -48,11 +49,19 @@ static void get_current_st_shifter()
 {
     current_st_shifter = *((volatile uint8_t*)0xffff8260);
 }
+static void set_current_st_shifter()
+{
+    *((volatile uint8_t*)0xffff8260) = current_st_shifter;
+}
 
 static uint16_t current_tt_shifter;
 static void get_current_tt_shifter()
 {
     current_tt_shifter = *((volatile uint16_t*)0xffff8262);
+}
+static void set_current_tt_shifter()
+{
+    *((volatile uint16_t*)0xffff8262) = current_tt_shifter;
 }
 
 int main(int argc, char* argv[])
@@ -103,8 +112,8 @@ int main(int argc, char* argv[])
     
     PaletteType palette_type = PaletteTypeNone;
     if ((file_header.flags & 0b11) == 0b01)
-        palette_type = PaletteTypeSte;
-    else if ((file_header.flags & 0b11) == 0b10)
+        palette_type = PaletteTypeSTE;
+    else if ((file_header.flags & 0b11) == 0b11)
         palette_type = PaletteTypeFalcon;
     
     uint16_t width = 0;
@@ -120,9 +129,15 @@ int main(int argc, char* argv[])
         return EXIT_SUCCESS;
     }
 
+    if (palette_type == PaletteTypeFalcon && vdo_val != VdoValueFalcon) {
+        fprintf(stdout, "Falcon palette can be set only on Falcon.\n");
+        getchar();
+        return EXIT_SUCCESS;
+    }
+
     uint16_t ste_palette[16];
     uint32_t falcon_palette[256];
-    if (palette_type == PaletteTypeSte) {
+    if (palette_type == PaletteTypeSTE) {
         fread(ste_palette, sizeof(ste_palette[0]), 16, f);
     } else if (palette_type == PaletteTypeFalcon) {
         fread(falcon_palette, sizeof(falcon_palette[0]), 256, f);
@@ -216,7 +231,7 @@ int main(int argc, char* argv[])
                 // packed chunks = planar if 1bpp
                 // TODO: can't we really set 320x2[04]0 @ 1bpp in falcon mode?
                 screen_width  = 640;
-                screen_height = palette_type == PaletteTypeSte || VgetMonitor() != MON_VGA ? 400 : 480;
+                screen_height = palette_type == PaletteTypeSTE || VgetMonitor() != MON_VGA ? 400 : 480;
                 screen_bpp    = 1;  // duochrome
                 falcon_mode   = BPS1;
             }
@@ -224,8 +239,8 @@ int main(int argc, char* argv[])
         case 2:
             if (!mono_monitor && file_header.bytesPerChunk == 0) {
                 // planar only
-                screen_width  = palette_type == PaletteTypeSte ? 640 : 320;
-                screen_height = palette_type == PaletteTypeSte || VgetMonitor() != MON_VGA ? 200 : 240;
+                screen_width  = palette_type == PaletteTypeSTE ? 640 : 320;
+                screen_height = palette_type == PaletteTypeSTE || VgetMonitor() != MON_VGA ? 200 : 240;
                 screen_bpp    = 2;
                 falcon_mode   = BPS2;
             }
@@ -233,7 +248,7 @@ int main(int argc, char* argv[])
         case 4:
             if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
                 screen_width  = 320;
-                screen_height = palette_type == PaletteTypeSte || VgetMonitor() != MON_VGA ? 200 : 240;
+                screen_height = palette_type == PaletteTypeSTE || VgetMonitor() != MON_VGA ? 200 : 240;
                 screen_bpp    = 4;
                 falcon_mode   = BPS4;
             }
@@ -273,29 +288,90 @@ int main(int argc, char* argv[])
             falcon_mode |= (old_mode & VGA);
             falcon_mode |= (old_mode & PAL);
 
-            if (palette_type == PaletteTypeSte)
+            if (palette_type == PaletteTypeSTE)
                 falcon_mode |= STMODES;
 
-            if (((falcon_mode & VGA) && screen_height == 240) || (!(falcon_mode & ~VGA) && screen_height == 400))
+            if (((falcon_mode & VGA) && (screen_height == 200 || screen_height == 240))
+                 || (!(falcon_mode & ~VGA) && (screen_height == 400 || screen_height == 480)))
                 falcon_mode |= VERTFLAG;
         }
     }
 
-    char* source_bitmap = NULL; // for chunky formats
-    char* bitmap = NULL;
-    char* bitmap_aligned = NULL;
-    if (file_header.bitsPerPixel > 0) {
-        // TODO: this should be either 320x200 or x2 (screen size) and copy (maybe Falcon RGB overscan)
-        // if bitmap > screen, fread should reflect this (reduced width loaded; OR... scrolling)
-        bitmap = (char*)Mxalloc(width * height + 15, MX_STRAM);
-        if (!bitmap) {
+    if (st_shifter == -1 && tt_shifter == -1 && falcon_mode == -1) {
+        if (palette_type != PaletteTypeNone) {
+            fprintf(stderr, "Unable to set %s palette\n", palette_type == PaletteTypeSTE ? "ST/E" : "Falcon");
+        }
+
+        if (width != 0 && height != 0) {
+            fprintf(stderr, "Unable to display: %dx%d@%dbpp (%s)\n",
+                    width, height, file_header.bitsPerPixel,
+                    file_header.bytesPerChunk > 0 ? "chunky" : "planar");
+        }
+
+        getchar();
+        return EXIT_FAILURE;
+    }
+
+    // TODO: c2p ... mozno robit po riadkoch s malym bufferom
+    char* screen = NULL;
+    char* screen_aligned = NULL;
+    if (width > 0 && height > 0) {
+        // allocate only if there is bitmap data
+        screen = (char*)Mxalloc((screen_width * screen_height * screen_bpp / 8) + 15, MX_STRAM);
+        if (!screen) {
             fprintf(stderr, "Not enough ST-RAM\n");
             getchar();
             return EXIT_FAILURE;
         }
 
-        bitmap_aligned = (char*)(((uintptr_t)bitmap + 15) & 0xfffffff0);
-        fread(bitmap_aligned, sizeof(*bitmap_aligned), width * height, f);
+        screen_aligned = (char*)(((uintptr_t)screen + 15) & 0xfffffff0);
+        memset(screen_aligned, 0, screen_width * screen_height * screen_bpp / 8);
+
+        size_t screen_x_offset = 0;
+        size_t final_width = screen_width;
+        size_t seek_offset = 0;
+        if (width > screen_width) {
+            seek_offset = width - screen_width;
+        } else {
+            screen_x_offset = (screen_width - width) / 2; // left and right border
+            final_width = width;
+        }
+
+        size_t screen_y_offset = 0;
+        size_t final_height = screen_height;
+        if (height < screen_height) {
+            screen_y_offset = (screen_height - height) / 2; // top and bottom border
+            final_height = height;
+        }
+
+        //printf("fw: %d, fh: %d, bpp: %d, ox: %d, oy: %d, seek: %d, w: %d, h: %d\n",
+        //       final_width, final_height, screen_bpp, screen_x_offset, screen_y_offset, seek_offset, width, height);
+        //getchar();
+
+        bool file_error = false;
+        char* p = screen_aligned + screen_y_offset * (screen_width * screen_bpp / 8);
+        for (size_t i = 0; i < final_height; ++i) {
+            p += screen_x_offset * screen_bpp / 8;
+
+            if (fread(p, sizeof(*p), final_width * screen_bpp / 8, f) != final_width * screen_bpp / 8) {
+                file_error = true;
+                break;
+            }
+
+            p += final_width * screen_bpp / 8;
+            p += screen_x_offset * screen_bpp / 8;
+
+            if (fseek(f, seek_offset * screen_bpp / 8, SEEK_CUR) != 0) {
+                file_error = true;
+                break;
+            }
+        }
+
+        if (file_error) {
+            fprintf(stderr, "I/O error.\n");
+            getchar();
+            return EXIT_FAILURE;
+        }
     }
 
     fclose(f);
@@ -304,18 +380,37 @@ int main(int argc, char* argv[])
 
     asm_screen_save();	// TODO: does the save works on ST/E, too?
     
-    VsetMode(0x23); // 320x240x256c@60 Hz
+    int16_t old_vsetmode = -1;
+    if (screen_aligned != NULL) {
+        if (st_shifter != -1) {
+            current_st_shifter = st_shifter;
+            set_current_st_shifter();
+        } else if (tt_shifter != -1) {
+            current_tt_shifter = tt_shifter;
+            set_current_tt_shifter();
+        } else if (falcon_mode != -1) {
+            old_vsetmode = VsetMode(falcon_mode);
+        }
 
-    asm_screen_set_vram(bitmap_aligned);
-    asm_screen_set_falcon_palette(falcon_palette);
+        asm_screen_set_vram(screen_aligned);
+    }
+
+    if (palette_type == PaletteTypeSTE)
+        asm_screen_set_ste_palette(ste_palette);
+    else if (palette_type == PaletteTypeFalcon)
+        asm_screen_set_falcon_palette(falcon_palette);
 
     getchar();
+
+    // make the OS happy
+    if (old_vsetmode != -1)
+        VsetMode(old_vsetmode);
 
     asm_screen_restore();
 
     Super(ssp);
 
-    Mfree(bitmap);
+    Mfree(screen);
 
     return EXIT_SUCCESS;
 }

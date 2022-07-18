@@ -28,10 +28,11 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
     //                             | |
     //                             +-+- 00: no palette
     //                                  01: ST/E compatible palette
-    //                                  10: Falcon compatible palette
+    //                                  10: TT compatible palette          TODO
+    //                                  11: Falcon compatible palette
     uint16_t flags = 0;
     if (*paletteBits)
-        flags |= (*stCompatiblePalette ? 0b01 : 0b10) << 0;
+        flags |= (*stCompatiblePalette ? 0b01 : 0b11) << 0;
 
     ofs.put(flags >> 8);
     ofs.put(flags);
@@ -99,11 +100,6 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
                     ).str()
                 );
             }
-
-            ofs.put(pal[i].wrapper.value >> 24);    // MSB
-            ofs.put(pal[i].wrapper.value >> 16);
-            ofs.put(pal[i].wrapper.value >>  8);
-            ofs.put(pal[i].wrapper.value);  // LSB
         } else if constexpr (std::is_same_v<T, StePaletteEntry>) {
             switch (*paletteBits) {
             case 12:
@@ -124,9 +120,20 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
                     ).str()
                 );
             }
+        } else
+            static_assert(bool_value<false, T>::value, "Unsupported palette type");
+    }
 
-            ofs.put(pal[i].wrapper.value >> 8);    // MSB
-            ofs.put(pal[i].wrapper.value);  // LSB
+    // always store whole palette
+    for (const auto& pal_entry : pal) {
+        if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
+            ofs.put(pal_entry.wrapper.value >> 24); // MSB
+            ofs.put(pal_entry.wrapper.value >> 16);
+            ofs.put(pal_entry.wrapper.value >>  8);
+            ofs.put(pal_entry.wrapper.value);   // LSB
+        } else if constexpr (std::is_same_v<T, StePaletteEntry>) {
+            ofs.put(pal_entry.wrapper.value >> 8);  // MSB
+            ofs.put(pal_entry.wrapper.value);   // LSB
         } else
             static_assert(bool_value<false, T>::value, "Unsupported palette type");
     }
@@ -232,6 +239,13 @@ int main(int argc, char* argv[])
         image.quiet(false);
         image.read(argv[argc-1]);
 
+        //image.resize({320*2, 240*2});
+        //image.type(PaletteType);
+
+        //image.quantizeDither(false);
+        //image.quantizeColors(16);
+        //image.quantize();
+
         if (image.type() != PaletteType)
             throw std::runtime_error("Not a palette type.");
 
@@ -249,8 +263,8 @@ int main(int argc, char* argv[])
                 throw std::runtime_error("Width must be divisible by 16.");
         }
 
-        if (*bitsPerPixel && (int)image.totalColors() > (1 << *bitsPerPixel))
-            throw std::runtime_error((std::ostringstream() << "Too few bpp for " << image.totalColors() << " colours.").str());
+        if (*bitsPerPixel && image.colorMapSize() > (1u << *bitsPerPixel))
+            throw std::runtime_error((std::ostringstream() << "Too few bpp for " << image.colorMapSize() << " colours.").str());
 
         std::ofstream ofs(outputFilename, std::ofstream::binary);
         if (!ofs)
@@ -305,7 +319,7 @@ int main(int argc, char* argv[])
     }
 
     std::cout << "File " << outputFilename
-              << " (" << image.columns() << "x" << image.rows() << "@" << image.totalColors() << ") "
+              << " (" << image.columns() << "x" << image.rows() << "@" << image.colorMapSize() << ") "
               << "has been saved." << std::endl;
 
     return EXIT_SUCCESS;
