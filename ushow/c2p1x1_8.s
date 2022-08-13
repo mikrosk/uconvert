@@ -1,11 +1,11 @@
+	xdef	_c2p1x1_8_falcon
 
-	; in	a0	chunky
-	;	a1	screen
-
-c2p1x1_8_falcon:
+_c2p1x1_8_falcon:
+	move.l	(4,sp),a0				; chunky
+	move.l	(8,sp),d0				; chunky end
+	move.l	(12,sp),a1				; screen
 	movem.l	d2-d7/a2-a6,-(sp)
-	move.l	a0,a2
-	add.l	#BPLSIZE*8,a2
+	move.l	d0,a2
 	move.l	#$0f0f0f0f,d4
 	move.l	#$00ff00ff,d5
 	move.l	#$55555555,d6

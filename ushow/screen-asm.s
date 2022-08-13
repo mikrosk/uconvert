@@ -28,7 +28,10 @@ _asm_screen_ste_save:
 .loop:		move.l	(a0)+,(a1)+
 		dbra	d0,.loop
 
-		move.w  $ffff8260.w,save_video
+		lea	save_video,a1
+		move.l	$ffff8200.w,(a1)+		; vidhm
+		move.w	$ffff820c.w,(a1)+		; vidl
+		move.w  $ffff8260.w,(a1)+		; st shifter
 		rts
 
 ; extern void asm_screen_tt_save(void);
@@ -43,7 +46,10 @@ _asm_screen_tt_save:
 .loop:		move.l	(a0)+,(a1)+
 		dbra	d0,.loop
 
-		move.w  $ffff8262.w,save_video
+		lea	save_video,a1
+		move.l	$ffff8200.w,(a1)+		; vidhm
+		move.w	$ffff820c.w,(a1)+		; vidl
+		move.w  $ffff8262.w,(a1)+		; tt shifter
 		rts
 
 ; extern void asm_screen_falcon_save(void);
@@ -98,14 +104,17 @@ _asm_screen_falcon_save:
 _asm_screen_ste_restore:
 		bsr	wait_vbl			; avoid flickering
 
+		lea	save_video,a1
+		move.l	(a1)+,$ffff8200.w		; vidhm
+		move.w	(a1)+,$ffff820c.w		; vidl
+		move.w  (a1)+,$ffff8260.w		; st shifter
+
 		lea     save_pal,a0
 		lea	$ffff8240.w,a1
 		moveq	#16/2-1,d0
 
 .loop:		move.l	(a0)+,(a1)+
 		dbra	d0,.loop
-
-		move.w  save_video,$ffff8260.w
 		rts
 
 ; extern void asm_screen_tt_restore(void);
@@ -113,14 +122,17 @@ _asm_screen_ste_restore:
 _asm_screen_tt_restore:
 		bsr	wait_vbl			; avoid flickering
 
+		lea	save_video,a1
+		move.l	(a1)+,$ffff8200.w		; vidhm
+		move.w	(a1)+,$ffff820c.w		; vidl
+		move.w  (a1)+,$ffff8262.w		; tt shifter
+
 		lea     save_pal,a0
 		lea	$ffff8400.w,a1
 		moveq	#256/2-1,d0
 
 .loop:		move.l	(a0)+,(a1)+
 		dbra	d0,.loop
-
-		move.w  save_video,$ffff8262.w
 		rts
 
 ; extern void asm_screen_falcon_restore(void);
@@ -183,39 +195,44 @@ _asm_screen_falcon_restore:
 		movem.l	(sp)+,d2-d7/a2
 		rts
 
-; extern void asm_screen_set_ste_palette(const uint16_t* pPalette);
+; extern void asm_screen_set_ste_palette(const uint16_t* pPalette, uint16_t palette_size);
 ;
 _asm_screen_set_ste_palette:
 		movea.l	(4,sp),a0
+		move.w	(8+2,sp),d0			; 32-bit ABI
+		ble	.done
 		lea	$ffff8240.w,a1
-		moveq	#16/2-1,d0
+		subq.w	#1,d0
 
-.loop:		move.l	(a0)+,(a1)+
+.loop:		move.w	(a0)+,(a1)+
 		dbra	d0,.loop
-		rts
+.done:		rts
 
-; extern void asm_screen_set_tt_palette(const uint16_t* pPalette);
+; extern void asm_screen_set_tt_palette(const uint16_t* pPalette, uint16_t palette_size);
 ;
 _asm_screen_set_tt_palette:
 		movea.l	(4,sp),a0
+		move.w	(8+2,sp),d0			; 32-bit ABI
+		ble	.done
 		lea	$ffff8400.w,a1
-		moveq	#256/2-1,d0
+		subq.w	#1,d0
 
-.loop:		move.l	(a0)+,(a1)+
+.loop:		move.w	(a0)+,(a1)+
 		dbra	d0,.loop
-		rts
+.done:		rts
 
-; extern void asm_screen_set_falcon_palette(const uint32_t* pPalette);
+; extern void asm_screen_set_falcon_palette(const uint32_t* pPalette, uint16_t palette_size);
 ;
 _asm_screen_set_falcon_palette:
 		movea.l	(4,sp),a0
+		move.w	(8+2,sp),d0			; 32-bit ABI
+		ble	.done
 		lea	$ffff9800.w,a1
-		moveq	#256/2-1,d0
+		subq.w	#1,d0
 
 .loop:		move.l	(a0)+,(a1)+
-		move.l	(a0)+,(a1)+
 		dbra	d0,.loop
-		rts
+.done:		rts
 
 ; extern void asm_screen_set_vram(const void* pScreen);
 ;

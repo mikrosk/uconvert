@@ -14,6 +14,7 @@ std::optional<int16_t>  bitsPerPixel;         // 1, 2, 4, 8 (both planar and chu
 std::optional<int16_t>  bytesPerChunk;        // -1 (if implicit/packed), 1, 2, 3, 4 or 0 (if disabled)
 std::optional<int16_t>  paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPerPixel > 8 or explicitly disabled)
 std::optional<bool>     stCompatiblePalette;  // if true, use the ST/E palette registers
+std::optional<bool>     ttCompatiblePalette;  // if true, use the TT palette registers
 // TODO: "convert" = convert into desired bit depth
 // TODO: chunky 6bpp?
 // cat picture.gif | giftopnm | pnmquant 16 | ppmtoneo > picture.neo
@@ -23,6 +24,7 @@ constexpr uint16_t DEFAULT_BITS_PER_PIXEL  = 8;
 constexpr uint16_t DEFAULT_BYTES_PER_CHUNK = 0;
 constexpr uint16_t   DEFAULT_PALETTE_BITS  = 24;
 constexpr bool      DEFAULT_ST_COMPATIBLE  = false;
+constexpr bool      DEFAULT_TT_COMPATIBLE  = false;
 
 std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::optional<int16_t>&>> allowedValues = {
     { "-bpp", { { 0, 1, 2, 4, 8, 16, 24, 32 }, bitsPerPixel  } },
@@ -37,7 +39,8 @@ static void print_help(const char* name)
            << "       -bpp:    bits per pixel, i.e. colour depth (0, 1, 2, 4, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
            << "       -bpc:    bytes per chunk (-1 for packed chunky pixels [default for bpp > 8], 0, 1, 2, 3, 4) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
            << "       -pal:    number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
-           << "       -st:     output palette in the ST/E-specific format (only 9/12-bit palette) [default " << DEFAULT_ST_COMPATIBLE << "]";
+           << "       -st:     output palette in the ST/E-specific format (only 9/12-bit palette) [default " << DEFAULT_ST_COMPATIBLE << "]" << std::endl
+           << "       -tt:     output palette in the TT-specific format (only 9/12-bit palette) [default " << DEFAULT_TT_COMPATIBLE << "]";
 
     throw std::invalid_argument(oss.str());
 }
@@ -92,19 +95,27 @@ std::string parse_arguments(int argc, char* argv[])
             if (!stCompatiblePalette.has_value())
                 stCompatiblePalette = DEFAULT_ST_COMPATIBLE;
 
+            if (!ttCompatiblePalette.has_value())
+                ttCompatiblePalette = DEFAULT_TT_COMPATIBLE;
+
             // do some sanity checks
-            // TODO: 2bpp must be st compatible
+            if (*stCompatiblePalette && *ttCompatiblePalette)
+                throw std::invalid_argument("Can't set both '-st' and '-tt'.");
+
             if (*bitsPerPixel > 8 && *paletteBits)
                 throw std::invalid_argument("Can't have palette with '-bpp' > 8.");
 
-            if ((!*paletteBits || *paletteBits > 12) && *stCompatiblePalette)
-                throw std::invalid_argument("'-st' requires 9- or 12-bit palette.");
+            if ((!*paletteBits || *paletteBits > 12) && (*stCompatiblePalette || *ttCompatiblePalette))
+                throw std::invalid_argument("'-st' and '-tt' require 9- or 12-bit palette.");
 
             if (*bitsPerPixel > 4 && *stCompatiblePalette)
                 throw std::invalid_argument("'-st' requires 1, 2 or 4 bits per pixel.");
 
-            if (*bitsPerPixel > 4 && *paletteBits && *paletteBits <= 12)
-                throw std::invalid_argument("'-pal 9|12' requires 1, 2 or 4 bits per pixel.");
+            if (*bitsPerPixel > 8 && *ttCompatiblePalette)
+                throw std::invalid_argument("'-tt' requires 1, 2, 4 or 8 bits per pixel.");
+
+            //if (*bitsPerPixel == 2 && !*stCompatiblePalette)
+            //    throw std::invalid_argument("'2 bits per pixel work only with '-st'");
 
             if (*bytesPerChunk && !*bitsPerPixel)
                 throw std::invalid_argument("-bpc requires bpp > 0.");
@@ -119,6 +130,11 @@ std::string parse_arguments(int argc, char* argv[])
         // flags
         if (arg == "-st") {
             stCompatiblePalette = true;
+            continue;
+        }
+
+        if (arg == "-tt") {
+            ttCompatiblePalette = true;
             continue;
         }
 

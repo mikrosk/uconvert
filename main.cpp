@@ -28,11 +28,17 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
     //                             | |
     //                             +-+- 00: no palette
     //                                  01: ST/E compatible palette
-    //                                  10: TT compatible palette          TODO
+    //                                  10: TT compatible palette
     //                                  11: Falcon compatible palette
     uint16_t flags = 0;
-    if (*paletteBits)
-        flags |= (*stCompatiblePalette ? 0b01 : 0b11) << 0;
+    if (*paletteBits) {
+        if (*stCompatiblePalette)
+            flags |= 0b01;
+        else if (*ttCompatiblePalette)
+            flags |= 0b10;
+        else
+            flags |= 0b11;
+    }
 
     ofs.put(flags >> 8);
     ofs.put(flags);
@@ -96,6 +102,22 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
                     ).str()
                 );
             }
+        } else if constexpr (std::is_same_v<T, TtPaletteEntry>) {
+            switch (*paletteBits) {
+            case 12:
+            case 9:
+                // shift by 1 (9-bit ST) or 0 (12-bit STE) bits
+                pal[i].r3210 = r << (4 - *paletteBits/3);
+                pal[i].g3210 = g << (4 - *paletteBits/3);
+                pal[i].b3210 = b << (4 - *paletteBits/3);
+                break;
+            default:
+                throw std::invalid_argument(
+                    (std::ostringstream()
+                        << "Unexpected number of palette bits: " << *paletteBits
+                    ).str()
+                );
+            }
         } else if constexpr (std::is_same_v<T, StePaletteEntry>) {
             switch (*paletteBits) {
             case 12:
@@ -120,14 +142,13 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
             static_assert(bool_value<false, T>::value, "Unsupported palette type");
     }
 
-    // always store whole palette
     for (const auto& pal_entry : pal) {
         if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
             ofs.put(pal_entry.wrapper.value >> 24); // MSB
             ofs.put(pal_entry.wrapper.value >> 16);
             ofs.put(pal_entry.wrapper.value >>  8);
             ofs.put(pal_entry.wrapper.value);   // LSB
-        } else if constexpr (std::is_same_v<T, StePaletteEntry>) {
+        } else if constexpr (std::is_same_v<T, TtPaletteEntry> || std::is_same_v<T, StePaletteEntry>) {
             ofs.put(pal_entry.wrapper.value >> 8);  // MSB
             ofs.put(pal_entry.wrapper.value);   // LSB
         } else
@@ -234,7 +255,7 @@ static void copy_packed_buffer(std::vector<uint8_t>& buffer, const Image& image)
         uint8_t chunk = 0;
         for (size_t i = 0; i < pixelsPerChunk; ++i) {
             assert(*pIndexPackets < (1 << *bitsPerPixel));
-            chunk += *pIndexPackets;
+            chunk += *pIndexPackets++;
             chunk <<= *bitsPerPixel;
         }
 
@@ -288,10 +309,12 @@ int main(int argc, char* argv[])
 
         save_header(ofs, image.columns(), image.rows());
         if (*paletteBits) {
-            if (!*stCompatiblePalette)
-                save_palette<FalconPaletteEntry>(ofs, image, 256);
+            if (*stCompatiblePalette)
+                save_palette<StePaletteEntry>(ofs, image, (1 << *bitsPerPixel));
+            else if (*ttCompatiblePalette)
+                save_palette<TtPaletteEntry>(ofs, image, (1 << *bitsPerPixel));
             else
-                save_palette<StePaletteEntry>(ofs, image, 16);
+                save_palette<FalconPaletteEntry>(ofs, image, (1 << *bitsPerPixel));
         }
 
         if (*bitsPerPixel) {
@@ -316,6 +339,7 @@ int main(int argc, char* argv[])
             } else if (*bytesPerChunk == 4) {
                 copy_buffer<uint32_t>(atariImage, image);
             } else if (*bytesPerChunk == -1) {
+                // assured by args.cpp
                 assert(*bitsPerPixel < 8);
                 copy_packed_buffer(atariImage, image);
             } else {

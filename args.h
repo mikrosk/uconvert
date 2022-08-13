@@ -9,6 +9,7 @@ extern std::optional<int16_t>   bitsPerPixel;         // 1, 2, 4, 8 (both planar
 extern std::optional<int16_t>   bytesPerChunk;        // -1 (if implicit/packed), 1, 2, 3, 4 or 0 (if disabled)
 extern std::optional<int16_t>   paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPerPixel > 8 or explicitly disabled)
 extern std::optional<bool>      stCompatiblePalette;  // if true, use the ST/E palette registers
+extern std::optional<bool>      ttCompatiblePalette;  // if true, use the TT palette registers
 
 extern std::string parse_arguments(int argc, char* argv[]);
 
