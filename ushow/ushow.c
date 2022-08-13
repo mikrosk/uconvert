@@ -376,7 +376,7 @@ int main(int argc, char* argv[])
 
     int32_t ssp = Super(0L);
 
-    asm_screen_save();	// TODO: does the save works on ST/E, too?
+    asm_screen_falcon_save();
 
     int16_t old_vsetmode = -1;
     if (screen_aligned != NULL) {
@@ -404,7 +404,7 @@ int main(int argc, char* argv[])
     if (old_vsetmode != -1)
         VsetMode(old_vsetmode);
 
-    asm_screen_restore();
+    asm_screen_falcon_restore();
 
     Super(ssp);
 
