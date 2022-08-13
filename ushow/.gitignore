@@ -1,0 +1,6 @@
+.qtc_clangd/
+*.creator.user
+
+ushow.ttp
+ushow
+!Makefile

@@ -375,11 +375,11 @@ int main(int argc, char* argv[])
     }
 
     fclose(f);
-    
+
     int32_t ssp = Super(0L);
 
     asm_screen_save();	// TODO: does the save works on ST/E, too?
-    
+
     int16_t old_vsetmode = -1;
     if (screen_aligned != NULL) {
         if (st_shifter != -1) {

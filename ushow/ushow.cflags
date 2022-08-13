@@ -1,0 +1,4 @@
+-O2
+-fomit-frame-pointer
+-Wall
+-std=c99

@@ -7,6 +7,8 @@ ASFLAGS	= -quiet -Faout -opt-allbra
 CFLAGS	= -O2 -fomit-frame-pointer -Wall -std=c99
 LDFLAGS	= -s
 
+all: $(TARGET).ttp
+
 $(TARGET).ttp: $(TARGET)
 	cp $< $@
 
