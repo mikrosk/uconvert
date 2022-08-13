@@ -151,22 +151,22 @@ static void c2p(std::vector<uint8_t>& buffer, const Image& image)
     image.getConstPixels(0, 0, image.columns(), image.rows());
     const IndexPacket* pIndexPackets = image.getConstIndexes();
 
-    for (size_t y = 0; y < image.rows(); ++y) {
-        for (size_t x = 0; x < image.columns(); x += 16) {
-            std::vector<uint16_t> planes(*bitsPerPixel); // 16 pixels = 16 bits x bit depth
+    for (const IndexPacket* pIndexPacketsEnd = pIndexPackets + image.columns() * image.rows();
+         pIndexPackets != pIndexPacketsEnd; pIndexPackets += 16)
+    {
+        std::vector<uint16_t> planes(*bitsPerPixel); // 16 pixels = 16 bits x bit depth
 
-            for (size_t i = 0; i < 16; ++i) {
-                uint8_t paletteIndex = pIndexPackets[y * image.columns() + x + i];
+        for (size_t i = 0; i < 16; ++i) {
+            uint8_t paletteIndex = pIndexPackets[i];
 
-                for (size_t j = 0; j < *bitsPerPixel; ++j) {
-                    planes[j] |= ((paletteIndex >> j) & 0x01) << (15 - i);
-                }
+            for (size_t j = 0; j < *bitsPerPixel; ++j) {
+                planes[j] |= ((paletteIndex >> j) & 0x01) << (15 - i);
             }
+        }
 
-            for (size_t i = 0; i < *bitsPerPixel; ++i) {
-                buffer.push_back(planes[i] >> 8);    // MSB
-                buffer.push_back(planes[i]);         // LSB
-            }
+        for (size_t i = 0; i < *bitsPerPixel; ++i) {
+            buffer.push_back(planes[i] >> 8);    // MSB
+            buffer.push_back(planes[i]);         // LSB
         }
     }
 }
