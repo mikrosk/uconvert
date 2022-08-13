@@ -10,11 +10,10 @@
 #include <unordered_set>
 #include <utility>
 
-std::optional<uint16_t>   bitsPerPixel;         // 1, 2, 4, 8 (both planar and chunky); 16, 24, 32 (chunky only) or 0 (if explicitly disabled)
-std::optional<uint16_t>   bytesPerChunk;        // 1, 2, 3, 4 or 0 (if disabled)
-std::optional<uint16_t>   paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPerPixel > 8 or explicitly disabled)
-std::optional<bool>       stCompatiblePalette;  // if true, use the ST/E palette registers
-std::optional<bool>       packedChunks;         // if true, pack pixels into more than one chunk
+std::optional<int16_t>  bitsPerPixel;         // 1, 2, 4, 8 (both planar and chunky); 16, 24, 32 (chunky only) or 0 (if explicitly disabled)
+std::optional<int16_t>  bytesPerChunk;        // -1 (if implicit/packed), 1, 2, 3, 4 or 0 (if disabled)
+std::optional<int16_t>  paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPerPixel > 8 or explicitly disabled)
+std::optional<bool>     stCompatiblePalette;  // if true, use the ST/E palette registers
 // TODO: "convert" = convert into desired bit depth
 // TODO: chunky 6bpp?
 // cat picture.gif | giftopnm | pnmquant 16 | ppmtoneo > picture.neo
@@ -24,11 +23,10 @@ constexpr uint16_t DEFAULT_BITS_PER_PIXEL  = 8;
 constexpr uint16_t DEFAULT_BYTES_PER_CHUNK = 0;
 constexpr uint16_t   DEFAULT_PALETTE_BITS  = 24;
 constexpr bool      DEFAULT_ST_COMPATIBLE  = false;
-constexpr bool      DEFAULT_PACKED_CHUNKS  = true;
 
-std::unordered_map<std::string, std::pair<std::unordered_set<uint16_t>, std::optional<uint16_t>&>> allowedValues = {
+std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::optional<int16_t>&>> allowedValues = {
     { "-bpp", { { 0, 1, 2, 4, 8, 16, 24, 32 }, bitsPerPixel  } },
-    { "-bpc", { { 0, 1, 2, 3, 4 },             bytesPerChunk } },
+    { "-bpc", { { -1, 0, 1, 2, 3, 4 },         bytesPerChunk } },
     { "-pal", { { 0, 9, 12, 18, 24 },          paletteBits   } }
 };
 
@@ -37,8 +35,7 @@ static void print_help(const char* name)
     std::ostringstream oss;
     oss << "Usage: " << name << " [-bpp <num>] [-bpc <num> [-packed]] [-pal <bits>] [-st] <image file>" << std::endl
            << "       -bpp:    bits per pixel, i.e. colour depth (0, 1, 2, 4, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
-           << "       -bpc:    bytes per chunk (0, 1, 2, 3, 4; implicitly set to bpp/8 for bpp > 8) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
-           << "       -packed: if bpc > 0 and bpp/8 < bpc, pack >1 pixels into one chunk [default " << DEFAULT_PACKED_CHUNKS << "]" << std::endl
+           << "       -bpc:    bytes per chunk (-1 for packed chunky pixels [default for bpp > 8], 0, 1, 2, 3, 4) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
            << "       -pal:    number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
            << "       -st:     output palette in the ST/E-specific format (only 9/12-bit palette) [default " << DEFAULT_ST_COMPATIBLE << "]";
 
@@ -79,17 +76,21 @@ std::string parse_arguments(int argc, char* argv[])
             if (!bitsPerPixel.has_value())
                 bitsPerPixel = DEFAULT_BITS_PER_PIXEL;
 
-            if (!bytesPerChunk.has_value())
-                bytesPerChunk = DEFAULT_BYTES_PER_CHUNK;
+            if (!bytesPerChunk.has_value()) {
+                if (*bitsPerPixel > 8)
+                    bytesPerChunk = *bitsPerPixel / 8;
+                else
+                    bytesPerChunk = DEFAULT_BYTES_PER_CHUNK;
+            } else if (*bytesPerChunk == -1 && *bitsPerPixel >= 8) {
+                // make it easier to parse
+                bytesPerChunk = *bitsPerPixel / 8;
+            }
 
             if (!paletteBits.has_value() && *bitsPerPixel <= 8) // either not set or less than 8bpp
                 paletteBits = DEFAULT_PALETTE_BITS;
 
             if (!stCompatiblePalette.has_value())
                 stCompatiblePalette = DEFAULT_ST_COMPATIBLE;
-
-            if (!packedChunks.has_value() && *bytesPerChunk)
-                packedChunks = DEFAULT_PACKED_CHUNKS;
 
             // do some sanity checks
             // TODO: 2bpp must be st compatible
@@ -105,17 +106,11 @@ std::string parse_arguments(int argc, char* argv[])
             if (*bitsPerPixel > 4 && *paletteBits && *paletteBits <= 12)
                 throw std::invalid_argument("'-pal 9|12' requires 1, 2 or 4 bits per pixel.");
 
-            if (!*bytesPerChunk && *packedChunks)
-                throw std::invalid_argument("'-packed' requires chunky format (bpc > 0).");
-
             if (*bytesPerChunk && !*bitsPerPixel)
                 throw std::invalid_argument("-bpc requires bpp > 0.");
 
-            if (*bytesPerChunk && *bitsPerPixel/8 > *bytesPerChunk)
+            if (*bytesPerChunk > 0 && *bitsPerPixel/8 > *bytesPerChunk)
                 throw std::invalid_argument("bpp/8 > bpc.");
-
-            if (*bitsPerPixel && *bytesPerChunk && *packedChunks && ((*bytesPerChunk*8) % *bitsPerPixel != 0))
-                throw std::invalid_argument("Illegal bpp/bpc combination for packed pixels.");
 
             outputFilename = arg.substr(0, arg.find_last_of('.')) + get_filename_ext();
             break;
@@ -124,11 +119,6 @@ std::string parse_arguments(int argc, char* argv[])
         // flags
         if (arg == "-st") {
             stCompatiblePalette = true;
-            continue;
-        }
-
-        if (arg == "-packed") {
-            packedChunks = true;
             continue;
         }
 

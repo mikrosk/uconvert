@@ -38,11 +38,7 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
     ofs.put(flags);
     // bits per pixel (0 if bitmap not present)
     ofs.put(*bitsPerPixel);
-    // pixels per chunk (0 if planar words or bitmap not present)
-    ofs.put(*bitsPerPixel && *bytesPerChunk
-            ? (!*packedChunks ? 1 : (*bytesPerChunk*8 / *bitsPerPixel))
-            : 0);
-    // bytes per chunk (0 if planar words or bitmap not present)
+    // bytes per chunk (0 if planar words or bitmap not present, -1 if packed)
     ofs.put(*bytesPerChunk);
 
     if (*bitsPerPixel) {
@@ -159,12 +155,12 @@ static void c2p(std::vector<uint8_t>& buffer, const Image& image)
         for (size_t i = 0; i < 16; ++i) {
             uint8_t paletteIndex = pIndexPackets[i];
 
-            for (size_t j = 0; j < *bitsPerPixel; ++j) {
+            for (int j = 0; j < *bitsPerPixel; ++j) {
                 planes[j] |= ((paletteIndex >> j) & 0x01) << (15 - i);
             }
         }
 
-        for (size_t i = 0; i < *bitsPerPixel; ++i) {
+        for (int i = 0; i < *bitsPerPixel; ++i) {
             buffer.push_back(planes[i] >> 8);    // MSB
             buffer.push_back(planes[i]);         // LSB
         }
@@ -209,7 +205,8 @@ static void copy_buffer(std::vector<uint8_t>& buffer, const Image& image)
             throw std::invalid_argument(
                 (std::ostringstream()
                     << "Unexpected number of bit per pixel: " << *bitsPerPixel
-                 ).str());
+                 ).str()
+            );
         }
 
         int shift = (sizeof(T) - 1) * 8;    // go from MSB to LSB
@@ -221,6 +218,27 @@ static void copy_buffer(std::vector<uint8_t>& buffer, const Image& image)
             if (shift == 0 && *bitsPerPixel == 24)
                 break;
         };
+    }
+}
+
+static void copy_packed_buffer(std::vector<uint8_t>& buffer, const Image& image)
+{
+    const PixelPacket* pPixelPackets = image.getConstPixels(0, 0, image.columns(), image.rows());
+    const IndexPacket* pIndexPackets = image.getConstIndexes();
+
+    const size_t pixelsPerChunk = 8 / *bitsPerPixel;
+
+    for (const PixelPacket* pPixelPacketsEnd = pPixelPackets + image.columns() * image.rows();
+         pPixelPackets != pPixelPacketsEnd; pPixelPackets += pixelsPerChunk)
+    {
+        uint8_t chunk = 0;
+        for (size_t i = 0; i < pixelsPerChunk; ++i) {
+            assert(*pIndexPackets < (1 << *bitsPerPixel));
+            chunk += *pIndexPackets;
+            chunk <<= *bitsPerPixel;
+        }
+
+        buffer.push_back(chunk);
     }
 }
 
@@ -279,10 +297,10 @@ int main(int argc, char* argv[])
         if (*bitsPerPixel) {
             size_t atariImageSize = image.rows() * image.columns();
 
-            if (*bytesPerChunk && !*packedChunks)
+            if (*bytesPerChunk > 0)
                 atariImageSize *= *bytesPerChunk;
             else
-                atariImageSize *= *bitsPerPixel/8;
+                atariImageSize *= *bitsPerPixel/8;  // this includes packed chunky pixels, too
 
             std::vector<uint8_t> atariImage;
             atariImage.reserve(atariImageSize);
@@ -297,6 +315,9 @@ int main(int argc, char* argv[])
                 copy_buffer<uint32_t>(atariImage, image);
             } else if (*bytesPerChunk == 4) {
                 copy_buffer<uint32_t>(atariImage, image);
+            } else if (*bytesPerChunk == -1) {
+                assert(*bitsPerPixel < 8);
+                copy_packed_buffer(atariImage, image);
             } else {
                 throw std::invalid_argument(
                     (std::ostringstream()

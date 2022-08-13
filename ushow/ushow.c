@@ -17,9 +17,8 @@ typedef struct {
     char        id[5];
     uint16_t    version;
     uint16_t    flags;
-    uint8_t     bitsPerPixel;
-    uint8_t     pixelsPerChunk;
-    uint8_t     bytesPerChunk;
+    int8_t      bitsPerPixel;
+    int8_t      bytesPerChunk;
 } __attribute__((packed)) FileHeader;
 
 typedef enum {
@@ -156,8 +155,8 @@ int main(int argc, char* argv[])
 
         switch (file_header.bitsPerPixel) {
         case 1:
-            if (mono_monitor && file_header.pixelsPerChunk == file_header.bytesPerChunk*8) {
-                // packed chunks = planar if 1bpp
+            if (mono_monitor && file_header.bytesPerChunk <= 0) {
+                // packed chunks (-1) = planar if 1bpp (0)
                 screen_width  = 640;
                 screen_height = 400;
                 screen_bpp    = 1;
@@ -174,7 +173,7 @@ int main(int argc, char* argv[])
             }
             break;
         case 4:
-            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
+            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.bytesPerChunk == 1))) {
                 screen_width  = 320;
                 screen_height = 200;
                 screen_bpp    = 4;
@@ -188,8 +187,8 @@ int main(int argc, char* argv[])
 
         switch (file_header.bitsPerPixel) {
         case 1:
-            if (file_header.pixelsPerChunk == file_header.bytesPerChunk*8) {
-                // packed chunks = planar if 1bpp
+            if (file_header.bytesPerChunk <= 0) {
+                // packed chunks (-1) = planar if 1bpp (0)
                 screen_width  = mono_monitor ? 1280 : 640;
                 screen_height = mono_monitor ? 960  : 400;
                 screen_bpp    = 1;  // duochrome
@@ -206,7 +205,7 @@ int main(int argc, char* argv[])
             }
             break;
         case 4:
-            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
+            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.bytesPerChunk == 1))) {
                 screen_width  = 320;
                 screen_height = 200;
                 screen_bpp    = 4;
@@ -214,7 +213,7 @@ int main(int argc, char* argv[])
             }
             break;
         case 8:
-            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
+            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.bytesPerChunk == 1))) {
                 screen_width  = 320;
                 screen_height = 480;
                 screen_bpp    = 8;
@@ -227,11 +226,10 @@ int main(int argc, char* argv[])
 
         switch (file_header.bitsPerPixel) {
         case 1:
-            if (file_header.pixelsPerChunk == file_header.bytesPerChunk*8) {
-                // packed chunks = planar if 1bpp
-                // TODO: can't we really set 320x2[04]0 @ 1bpp in falcon mode?
-                screen_width  = 640;
-                screen_height = palette_type == PaletteTypeSTE || VgetMonitor() != MON_VGA ? 400 : 480;
+            if (file_header.bytesPerChunk <= 0) {
+                // packed chunks (-1) = planar if 1bpp (0)
+                screen_width  = mono_monitor ? 640 : 320;
+                screen_height = mono_monitor ? 400 : (palette_type == PaletteTypeSte || VgetMonitor() != MON_VGA ? 200 : 240);
                 screen_bpp    = 1;  // duochrome
                 falcon_mode   = BPS1;
             }
@@ -246,7 +244,7 @@ int main(int argc, char* argv[])
             }
             break;
         case 4:
-            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
+            if (!mono_monitor && (file_header.bytesPerChunk == 0 || (c2p && file_header.bytesPerChunk == 1))) {
                 screen_width  = 320;
                 screen_height = palette_type == PaletteTypeSTE || VgetMonitor() != MON_VGA ? 200 : 240;
                 screen_bpp    = 4;
@@ -254,7 +252,7 @@ int main(int argc, char* argv[])
             }
             break;
         case 8:
-            if (!mono_monitor && (file_header.bytesPerChunk == 0 || ((c2p || supervidel) && file_header.pixelsPerChunk == 1 && file_header.bytesPerChunk == 1))) {
+            if (!mono_monitor && (file_header.bytesPerChunk == 0 || ((c2p || supervidel) && file_header.bytesPerChunk == 1))) {
                 screen_width  = 320;
                 screen_height = VgetMonitor() != MON_VGA ? 200 : 240;
                 screen_bpp    = 8;
@@ -262,7 +260,7 @@ int main(int argc, char* argv[])
             }
             break;
         case 16:
-            if (!mono_monitor && file_header.bytesPerChunk / file_header.pixelsPerChunk == 2) {
+            if (!mono_monitor && file_header.bytesPerChunk == 2) {
                 screen_width  = 320;
                 screen_height = VgetMonitor() != MON_VGA ? 200 : 240;
                 screen_bpp    = 16;
@@ -270,7 +268,7 @@ int main(int argc, char* argv[])
             }
             break;
         case 32:
-            if (supervidel && file_header.bytesPerChunk / file_header.pixelsPerChunk == 4) {
+            if (supervidel && file_header.bytesPerChunk == 4) {
                 screen_width  = 320;
                 screen_height = 240;
                 screen_bpp    = 32;
