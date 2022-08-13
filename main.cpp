@@ -178,51 +178,49 @@ static void copy_buffer(std::vector<uint8_t>& buffer, const Image& image)
     const IndexPacket* pIndexPackets = image.getConstIndexes();
     T chunk = 0;
 
-    // TODO: packed
+    for (const PixelPacket* pPixelPacketsEnd = pPixelPackets + image.columns() * image.rows();
+         pPixelPackets != pPixelPacketsEnd; pPixelPackets++)
+    {
+        switch (*bitsPerPixel) {
+        case 1:
+        case 2:
+        case 4:
+        case 8: {
+            chunk = *pIndexPackets++;
+        } break;
 
-    for (size_t y = 0; y < image.rows(); ++y) {
-        for (size_t x = 0; x < image.columns(); ++x) {
-            switch (*bitsPerPixel) {
-            case 1:
-            case 2:
-            case 4:
-            case 8: {
-                chunk = pIndexPackets[y * image.columns() + x];
-            } break;
+        case 16: {
+            const uint8_t r = pPixelPackets->red   * ((1 << 5) - 1);
+            const uint8_t g = pPixelPackets->green * ((1 << 6) - 1);
+            const uint8_t b = pPixelPackets->blue  * ((1 << 5) - 1);
+            chunk = (r << 11) | (g << 5) | b;
+        } break;
 
-            case 16: {
-                const uint8_t r = pPixelPackets[y * image.columns() + x].red   * ((1 << 5) - 1);
-                const uint8_t g = pPixelPackets[y * image.columns() + x].green * ((1 << 6) - 1);
-                const uint8_t b = pPixelPackets[y * image.columns() + x].blue  * ((1 << 5) - 1);
-                chunk = (r << 11) | (g << 5) | b;
-            } break;
+        case 24:
+        case 32: {
+            const uint8_t r = pPixelPackets->red   * ((1 << 8) - 1);
+            const uint8_t g = pPixelPackets->green * ((1 << 8) - 1);
+            const uint8_t b = pPixelPackets->blue  * ((1 << 8) - 1);
+            // TODO: true alpha channel?
+            chunk = (r << 24) | (g << 16) | (b << 8) | 0xffu;    // RGBA with full opacity
+        } break;
 
-            case 24:
-            case 32: {
-                const uint8_t r = pPixelPackets[y * image.columns() + x].red   * ((1 << 8) - 1);
-                const uint8_t g = pPixelPackets[y * image.columns() + x].green * ((1 << 8) - 1);
-                const uint8_t b = pPixelPackets[y * image.columns() + x].blue  * ((1 << 8) - 1);
-                chunk = (r << 24) | (g << 16) | (b << 8) | 0xffu;    // RGBA with full opacity
-            } break;
-
-            default:
-                throw std::invalid_argument(
-                    (std::ostringstream()
-                        << "Unexpected number of bit per pixel: " << *bitsPerPixel
-                    ).str()
-                );
-            }
-
-            int shift = (sizeof(T) - 1) * 8;    // go from MSB to LSB
-            while (shift >= 0) {
-                buffer.push_back(chunk >> shift);
-                shift -= 8;
-
-                // quick hack to skip opacity
-                if (shift == 0 && *bitsPerPixel == 24)
-                    break;
-            };
+        default:
+            throw std::invalid_argument(
+                (std::ostringstream()
+                    << "Unexpected number of bit per pixel: " << *bitsPerPixel
+                 ).str());
         }
+
+        int shift = (sizeof(T) - 1) * 8;    // go from MSB to LSB
+        while (shift >= 0) {
+            buffer.push_back(chunk >> shift);
+            shift -= 8;
+
+            // quick hack to skip opacity
+            if (shift == 0 && *bitsPerPixel == 24)
+                break;
+        };
     }
 }
 
