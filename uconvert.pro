@@ -16,4 +16,5 @@ HEADERS += \
     args.h \
     bitfield.h \
     helpers.h \
-    palette.h
+    palette.h \
+    version.h

@@ -34,8 +34,7 @@ using namespace Magick;
 #include "args.h"
 #include "helpers.h"
 #include "palette.h"
-
-constexpr uint16_t VERSION = 0x0100;
+#include "version.h"
 
 // all values must be big endian
 static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t height)
@@ -295,6 +294,16 @@ int main(int argc, char* argv[])
 
         image.quiet(false);
         image.read(argv[argc-1]);
+
+        if (bitmapWidth == -1)
+            bitmapWidth = image.columns();
+        else if (bitmapWidth <= 0)
+            throw std::invalid_argument("Width must be a positive number.");
+
+        if (bitmapHeight == -1)
+            bitmapHeight = image.rows();
+        else if (bitmapHeight <= 0)
+            throw std::invalid_argument("Height must be a positive number.");
 
         //image.resize({320*2, 240*2});
         //image.type(PaletteType);

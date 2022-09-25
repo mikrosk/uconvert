@@ -22,6 +22,7 @@
 
 #include <cstdlib>
 #include <iomanip>
+#include <ios>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -30,37 +31,55 @@
 #include <unordered_set>
 #include <utility>
 
+#include "version.h"
+
+std::optional<int16_t>  bitmapWidth;          // -1 (if original width) or any number
+std::optional<int16_t>  bitmapHeight;         // -1 (if original height) or any number
+std::optional<bool>     convert;              // if true, convert to desired bit depth
+
 std::optional<int16_t>  bitsPerPixel;         // 1, 2, 4, 8 (both planar and chunky); 16, 24, 32 (chunky only) or 0 (if explicitly disabled)
 std::optional<int16_t>  bytesPerChunk;        // -1 (if implicit/packed), 1, 2, 3, 4 or 0 (if disabled)
 std::optional<int16_t>  paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPerPixel > 8 or explicitly disabled)
-std::optional<bool>     stCompatiblePalette;  // if true, use the ST/E palette registers
-std::optional<bool>     ttCompatiblePalette;  // if true, use the TT palette registers
-// TODO: "convert" = convert into desired bit depth
+std::optional<bool>     stCompatiblePalette;  // if true, use ST/E palette registers
+std::optional<bool>     ttCompatiblePalette;  // if true, use TT palette registers
 // TODO: chunky 6bpp?
 // cat picture.gif | giftopnm | pnmquant 16 | ppmtoneo > picture.neo
 
 // defaults
-constexpr uint16_t DEFAULT_BITS_PER_PIXEL  = 8;
-constexpr uint16_t DEFAULT_BYTES_PER_CHUNK = 0;
-constexpr uint16_t   DEFAULT_PALETTE_BITS  = 24;
-constexpr bool      DEFAULT_ST_COMPATIBLE  = false;
-constexpr bool      DEFAULT_TT_COMPATIBLE  = false;
+constexpr int16_t    DEFAULT_BITMAP_WIDTH = -1;
+constexpr int16_t   DEFAULT_BITMAP_HEIGHT = -1;
+constexpr bool           DEFAULT_CONVERT  = false;
+
+constexpr int16_t DEFAULT_BITS_PER_PIXEL  = 8;
+constexpr int16_t DEFAULT_BYTES_PER_CHUNK = 0;
+constexpr int16_t   DEFAULT_PALETTE_BITS  = 24;
+constexpr bool     DEFAULT_ST_COMPATIBLE  = false;
+constexpr bool     DEFAULT_TT_COMPATIBLE  = false;
 
 std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::optional<int16_t>&>> allowedValues = {
-    { "-bpp", { { 0, 1, 2, 4, 8, 16, 24, 32 }, bitsPerPixel  } },
-    { "-bpc", { { -1, 0, 1, 2, 3, 4 },         bytesPerChunk } },
-    { "-pal", { { 0, 9, 12, 18, 24 },          paletteBits   } }
+    { "-bpp",    { { 0, 1, 2, 4, 8, 16, 24, 32 }, bitsPerPixel  } },
+    { "-bpc",    { { -1, 0, 1, 2, 3, 4 },         bytesPerChunk } },
+    { "-pal",    { { 0, 9, 12, 18, 24 },          paletteBits   } },
+    { "-width",  { { },                           bitmapWidth   } },
+    { "-height", { { },                           bitmapHeight  } }
 };
 
 static void print_help(const char* name)
 {
     std::ostringstream oss;
-    oss << "Usage: " << name << " [-bpp <num>] [-bpc <num> [-packed]] [-pal <bits>] [-st] <image file>" << std::endl
-           << "       -bpp:    bits per pixel, i.e. colour depth (0, 1, 2, 4, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
-           << "       -bpc:    bytes per chunk (-1 for packed chunky pixels [default for bpp > 8], 0, 1, 2, 3, 4) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
-           << "       -pal:    number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
-           << "       -st:     output palette in the ST/E-specific format (only 9/12-bit palette) [default " << DEFAULT_ST_COMPATIBLE << "]" << std::endl
-           << "       -tt:     output palette in the TT-specific format (only 9/12-bit palette) [default " << DEFAULT_TT_COMPATIBLE << "]";
+    oss << "Usage: " << name << " [OPTION...] FILE" << std::endl
+        << "Convert bitmap FILE into an Atari ST/STE/TT/Falcon-specific format." << std::endl
+        << "Version " << (VERSION>>8) << "." << std::setfill('0') << std::setw(2) << (VERSION&0xFFu) << " (c) 2022 Miro Kropacek <miro.kropacek@gmail.com>." << std::endl
+        << std::endl
+        << "Possible options:" << std::endl
+        << "  -width <num>   specify new bitmap width [default " << DEFAULT_BITMAP_WIDTH << "]" << std::endl
+        << "  -height <num>  specify new bitmap height [default " << DEFAULT_BITMAP_HEIGHT << "]" << std::endl
+        << "  -convert       convert into specified colour depth [default " << std::boolalpha << DEFAULT_CONVERT << "]" << std::endl
+        << "  -bpp <num>     bits per pixel, i.e. colour depth (0, 1, 2, 4, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
+        << "  -bpc <num>     bytes per chunk (-1 for packed chunky pixels [default for bpp > 8], 0, 1, 2, 3, 4) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
+        << "  -pal <num>     number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
+        << "  -st            output palette in ST/E-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_ST_COMPATIBLE << "]" << std::endl
+        << "  -tt            output palette in TT-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_TT_COMPATIBLE << "]";
 
     throw std::invalid_argument(oss.str());
 }
@@ -85,7 +104,7 @@ static std::string get_filename_ext()
 std::string parse_arguments(int argc, char* argv[])
 {
     if (argc < 2 || argc > 10) {
-        print_help(argv[0]);
+        print_help("uconvert"/*argv[0]*/);
     }
 
     std::string outputFilename;
@@ -96,6 +115,15 @@ std::string parse_arguments(int argc, char* argv[])
         // last argument => it's a filename
         if (i == argc-1) {
             // defaults (always assumed to be in a legal combination)
+            if (!bitmapWidth.has_value())
+                bitmapWidth = DEFAULT_BITMAP_WIDTH;
+
+            if (!bitmapHeight.has_value())
+                bitmapHeight = DEFAULT_BITMAP_HEIGHT;
+
+            if (!convert.has_value())
+                convert = DEFAULT_CONVERT;
+
             if (!bitsPerPixel.has_value())
                 bitsPerPixel = DEFAULT_BITS_PER_PIXEL;
 
@@ -148,6 +176,11 @@ std::string parse_arguments(int argc, char* argv[])
         }
 
         // flags
+        if (arg == "-convert") {
+            convert = true;
+            continue;
+        }
+
         if (arg == "-st") {
             stCompatiblePalette = true;
             continue;
@@ -164,7 +197,7 @@ std::string parse_arguments(int argc, char* argv[])
         auto it = allowedValues.find(arg);
         if (it == allowedValues.end()
                 || i == argc || i+1 == argc
-                || it->second.first.find(std::atoi(argv[i])) == it->second.first.end())
+                || (!it->second.first.empty() && it->second.first.find(std::atoi(argv[i])) == it->second.first.end()))
             print_help(argv[0]);
 
         it->second.second = std::atoi(argv[i]);
