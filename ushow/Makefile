@@ -1,5 +1,7 @@
 TARGET	= ushow
 
+LIBCMINI ?= yes
+
 AS	= vasm
 CC	= m68k-atari-mint-gcc
 
@@ -7,6 +9,13 @@ ASFLAGS	= -quiet -Faout -opt-allbra
 CFLAGS	= -O2 -fomit-frame-pointer -Wall -std=c99
 LDFLAGS	= -s
 #LDFLAGS = -g -Wl,--traditional-format
+
+ifeq ($(LIBCMINI),yes)
+LIBCMINI_ROOT := $(shell $(CC) -print-sysroot)/opt/libcmini
+CFLAGS	:= -I$(LIBCMINI_ROOT)/include $(CFLAGS)
+LDFLAGS	:= -nostdlib $(LIBCMINI_ROOT)/lib/crt0.o $(LDFLAGS) -L$(LIBCMINI_ROOT)/lib
+LDLIBS	:= -lcmini -lgcc $(LIBS)
+endif
 
 all: $(TARGET).ttp
 

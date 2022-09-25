@@ -11,8 +11,6 @@
 #include "c2p-asm.h"
 #include "screen-asm.h"
 
-// TODO: libcmini
-
 typedef struct {
     char        id[5];
     uint16_t    version;
@@ -37,8 +35,8 @@ typedef enum {
 
 static void print_help()
 {
-    fprintf(stderr, "Usage: ushow.ttp [-c2p] <filename.ext>\n");
-    fprintf(stderr, "Press enter to exit.\n");
+    fprintf(stderr, "Usage: ushow.ttp [-c2p] <filename.ext>\r\n");
+    fprintf(stderr, "Press enter to exit.\r\n");
     getchar();
     exit(EXIT_FAILURE);
 }
@@ -82,7 +80,7 @@ int main(int argc, char* argv[])
     vdo_val >>= 16;	// interested in the upper word only
 
     if (vdo_val < VdoValueST || vdo_val > VdoValueFalcon) {
-        fprintf(stderr, "Not an Atari compatible video.\n");
+        fprintf(stderr, "Not an Atari compatible video.\r\n");
         getchar();
         return EXIT_FAILURE;
     }
@@ -91,20 +89,20 @@ int main(int argc, char* argv[])
 
     FILE* f = fopen(argv[argc-1], "rb");
     if (!f) {
-        fprintf(stderr, "Failed to open '%s'.\n", argv[argc-1]);
+        fprintf(stderr, "Failed to open '%s'.\r\n", argv[argc-1]);
         getchar();
         return EXIT_FAILURE;
     }
 
     FileHeader file_header;
     if (fread(&file_header, sizeof(file_header), 1, f) != 1) {
-        fprintf(stderr, "Read error.\n");
+        fprintf(stderr, "Read error.\r\n");
         getchar();
         return EXIT_FAILURE;
     }
 
     if (strcmp(file_header.id, "UIMG") != 0) {
-        fprintf(stderr, "Invalid header: '%s'.\n", file_header.id);
+        fprintf(stderr, "Invalid header: '%s'.\r\n", file_header.id);
         getchar();
         return EXIT_FAILURE;
     }
@@ -125,25 +123,25 @@ int main(int argc, char* argv[])
     }
 
     if (palette_type == PaletteTypeNone && (width == 0 || height == 0)) {
-        fprintf(stdout, "No palette and no bitmap data - nothing to do.\n");
+        fprintf(stdout, "No palette and no bitmap data - nothing to do.\r\n");
         getchar();
         return EXIT_SUCCESS;
     }
 
     if (palette_type == PaletteTypeTT && vdo_val != VdoValueTT) {
-        fprintf(stdout, "TT palette can be set only on TT.\n");
+        fprintf(stdout, "TT palette can be set only on TT.\r\n");
         getchar();
         return EXIT_SUCCESS;
     }
 
     if (palette_type == PaletteTypeFalcon && vdo_val != VdoValueFalcon) {
-        fprintf(stdout, "Falcon palette can be set only on Falcon.\n");
+        fprintf(stdout, "Falcon palette can be set only on Falcon.\r\n");
         getchar();
         return EXIT_SUCCESS;
     }
 
     if (c2p && (file_header.bytesPerChunk != 1 || (file_header.bitsPerPixel != 4 && file_header.bitsPerPixel != 8))) {
-        fprintf(stdout, "Unsupported C2P configuration.\n");
+        fprintf(stdout, "Unsupported C2P configuration.\r\n");
         getchar();
         return EXIT_SUCCESS;
     }
@@ -326,12 +324,12 @@ int main(int argc, char* argv[])
 
     if (st_shifter == -1 && tt_shifter == -1 && falcon_mode == -1) {
         if (palette_type != PaletteTypeNone) {
-            fprintf(stderr, "Unable to set %s palette.\n",
+            fprintf(stderr, "Unable to set %s palette.\r\n",
                     palette_type == PaletteTypeSTE ? "ST/E" : (palette_type == PaletteTypeTT ? "TT" : "Falcon"));
         }
 
         if (width != 0 && height != 0) {
-            fprintf(stderr, "Unable to display: %dx%d@%dbpp (%s).\n",
+            fprintf(stderr, "Unable to display: %dx%d@%dbpp (%s).\r\n",
                     width, height, file_header.bitsPerPixel,
                     file_header.bytesPerChunk > 0 ? "chunky" : "planar");
         }
@@ -348,7 +346,7 @@ int main(int argc, char* argv[])
         // allocate only if there is bitmap data
         screen = (char*)Mxalloc((screen_width * screen_height * screen_bpp / 8) + 15, MX_STRAM);
         if (!screen) {
-            fprintf(stderr, "Not enough ST-RAM.\n");
+            fprintf(stderr, "Not enough ST-RAM.\r\n");
             getchar();
             return EXIT_FAILURE;
         }
@@ -376,13 +374,13 @@ int main(int argc, char* argv[])
         if (c2p) {
             c2p_buffer = (char*)malloc(final_width * file_header.bytesPerChunk);
             if (!c2p_buffer) {
-                fprintf(stderr, "Not enough RAM for C2P.\n");
+                fprintf(stderr, "Not enough RAM for C2P.\r\n");
                 getchar();
                 return EXIT_FAILURE;
             }
         }
 
-        //printf("fw: %d, fh: %d, bpp: %d, ox: %d, oy: %d, seek: %d, w: %d, h: %d\n",
+        //printf("fw: %d, fh: %d, bpp: %d, ox: %d, oy: %d, seek: %d, w: %d, h: %d\r\n",
         //       final_width, final_height, screen_bpp, screen_x_offset, screen_y_offset, seek_offset, width, height);
         //getchar();
 
@@ -418,7 +416,7 @@ int main(int argc, char* argv[])
         }
 
         if (file_error) {
-            fprintf(stderr, "I/O error.\n");
+            fprintf(stderr, "I/O error.\r\n");
             getchar();
             return EXIT_FAILURE;
         }
