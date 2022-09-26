@@ -5,7 +5,7 @@ CONFIG -= qt
 
 SOURCES += \
         args.cpp \
-        main.cpp
+        uconvert.cpp
 
 #QMAKE_CXXFLAGS += $$system(GraphicsMagick++-config --cppflags --cxxflags)
 QMAKE_CXXFLAGS += $$system(GraphicsMagick++-config --cppflags)
