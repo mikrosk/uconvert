@@ -22,6 +22,7 @@
 #define HELPERS_H
 
 #include <cstddef>
+#include <sstream>
 #include <vector>
 
 template<typename T>
@@ -34,5 +35,10 @@ template<bool val, typename T>
 struct bool_value {
     static constexpr bool value = val;
 };
+
+template <typename Ex>
+void throw_oss(std::ostream& oss) {
+    throw Ex(static_cast<std::ostringstream&>(oss).str());
+}
 
 #endif // HELPERS_H

@@ -115,10 +115,8 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
                 pal[i].b765432 = b << (6 - *paletteBits/3);
                 break;
             default:
-                throw std::invalid_argument(
-                    (std::ostringstream()
-                        << "Unexpected number of palette bits: " << *paletteBits
-                    ).str()
+                throw_oss<std::invalid_argument>(std::ostringstream()
+                    << "Unexpected number of palette bits: " << *paletteBits
                 );
             }
         } else if constexpr (std::is_same_v<T, TtPaletteEntry>) {
@@ -131,10 +129,8 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
                 pal[i].b3210 = b << (4 - *paletteBits/3);
                 break;
             default:
-                throw std::invalid_argument(
-                    (std::ostringstream()
-                        << "Unexpected number of palette bits: " << *paletteBits
-                    ).str()
+                throw_oss<std::invalid_argument>(std::ostringstream()
+                    << "Unexpected number of palette bits: " << *paletteBits
                 );
             }
         } else if constexpr (std::is_same_v<T, StePaletteEntry>) {
@@ -151,10 +147,8 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
                 pal[i].b321 = b >> ((*paletteBits - 9)/3);
                 break;
             default:
-                throw std::invalid_argument(
-                    (std::ostringstream()
-                        << "Unexpected number of palette bits: " << *paletteBits
-                    ).str()
+                throw_oss<std::invalid_argument>(std::ostringstream()
+                    << "Unexpected number of palette bits: " << *paletteBits
                 );
             }
         } else
@@ -242,10 +236,8 @@ static void copy_buffer(std::vector<uint8_t>& buffer, const Image& image)
         } break;
 
         default:
-            throw std::invalid_argument(
-                (std::ostringstream()
-                    << "Unexpected number of bit per pixel: " << *bitsPerPixel
-                 ).str()
+            throw_oss<std::invalid_argument>(std::ostringstream()
+                << "Unexpected number of bit per pixel: " << *bitsPerPixel
             );
         }
 
@@ -320,17 +312,20 @@ int main(int argc, char* argv[])
 
         if (*paletteBits) {
             if ((*stCompatiblePalette && image.colorMapSize() > 16) || (!*stCompatiblePalette && image.colorMapSize() > 256))
-                throw std::runtime_error(
-                        (std::ostringstream() << "Color map must have less or equal than "
-                         << (*stCompatiblePalette ? 16 :256)
-                         << " entries (currently: " << image.colorMapSize() << ").").str());
+                throw_oss<std::runtime_error>(std::ostringstream()
+                     << "Color map must have less or equal than "
+                     << (*stCompatiblePalette ? 16 :256)
+                     << " entries (currently: " << image.colorMapSize() << ")."
+                );
 
             if (image.columns() % 16 != 0)
                 throw std::runtime_error("Width must be divisible by 16.");
         }
 
         if (*bitsPerPixel && image.colorMapSize() > (1u << *bitsPerPixel))
-            throw std::runtime_error((std::ostringstream() << "Too few bpp for " << image.colorMapSize() << " colours.").str());
+            throw_oss<std::runtime_error>(std::ostringstream()
+                << "Too few bpp for " << image.colorMapSize() << " colours."
+            );
 
         std::ofstream ofs(outputFilename, std::ofstream::binary);
         if (!ofs)
@@ -372,10 +367,8 @@ int main(int argc, char* argv[])
                 assert(*bitsPerPixel < 8);
                 copy_packed_buffer(atariImage, image);
             } else {
-                throw std::invalid_argument(
-                    (std::ostringstream()
-                        << "Unexpected number of bytes per chunk: " << *bytesPerChunk
-                    ).str()
+                throw_oss<std::invalid_argument>(std::ostringstream()
+                    << "Unexpected number of bytes per chunk: " << *bytesPerChunk
                 );
             }
 

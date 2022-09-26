@@ -86,19 +86,23 @@ static void print_help(const char* name)
 
 static std::string get_filename_ext()
 {
+    std::ostringstream oss;
+
     if (!*bitsPerPixel && *paletteBits) {
         // just palette
-        return (std::ostringstream() << ".p" << std::setw(2) << std::setfill('0') << *paletteBits).str();
+        oss << ".p" << std::setw(2) << std::setfill('0') << *paletteBits;
     } else if (*bitsPerPixel && *paletteBits && !*bytesPerChunk) {
         // regular planar bitmap
-        return (std::ostringstream() << ".bp" << *bitsPerPixel).str();
+        oss << ".bp" << *bitsPerPixel;
     } else if (*bitsPerPixel && (*bitsPerPixel > 8 || *paletteBits) && *bytesPerChunk) {
         // regular chunky bitmap
-        return (std::ostringstream() << ".c" << std::setw(2) << std::setfill('0') << *bitsPerPixel).str();
+        oss << ".c" << std::setw(2) << std::setfill('0') << *bitsPerPixel;
     } else {
         // everything else: separate palette, plane raw words/chunky pixels or just the header...
-        return ".dat";
+        oss << ".dat";
     }
+
+    return oss.str();
 }
 
 std::string parse_arguments(int argc, char* argv[])
