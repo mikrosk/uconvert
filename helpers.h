@@ -37,8 +37,8 @@ struct bool_value {
 };
 
 template <typename Ex>
-void throw_oss(std::ostream& oss) {
-    throw Ex(static_cast<std::ostringstream&>(oss).str());
+void throw_oss(const std::ostream& oss) {
+    throw Ex(static_cast<const std::ostringstream&>(oss).str());
 }
 
 #endif // HELPERS_H
