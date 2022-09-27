@@ -287,45 +287,57 @@ int main(int argc, char* argv[])
         image.quiet(false);
         image.read(argv[argc-1]);
 
-        if (bitmapWidth == -1)
+        if (*bitmapWidth == -1)
             bitmapWidth = image.columns();
-        else if (bitmapWidth <= 0)
+        else if (*bitmapWidth <= 0)
             throw std::invalid_argument("Width must be a positive number.");
 
-        if (bitmapHeight == -1)
+        if (*bitmapHeight == -1)
             bitmapHeight = image.rows();
-        else if (bitmapHeight <= 0)
+        else if (*bitmapHeight <= 0)
             throw std::invalid_argument("Height must be a positive number.");
 
-        //image.resize({320*2, 240*2});
-        //image.type(PaletteType);
+        auto oldTotalColors = image.totalColors();
 
-        //image.quantizeDither(false);
-        //image.quantizeColors(16);
-        //image.quantize();
+        if (static_cast<unsigned int>(*bitmapWidth) != image.columns() || static_cast<unsigned int>(*bitmapHeight) != image.rows()) {
+            Geometry geometry;
+            geometry.width(static_cast<unsigned int>(*bitmapWidth));
+            geometry.height(static_cast<unsigned int>(*bitmapHeight));
+            geometry.aspect(true);
 
-        if (image.type() != PaletteType)
-            throw std::runtime_error("Not a palette type.");
-
-        if (image.classType() != PseudoClass)
-            throw std::runtime_error("Not a pseudo class.");
-
-        if (*paletteBits) {
-            if ((*stCompatiblePalette && image.colorMapSize() > 16) || (!*stCompatiblePalette && image.colorMapSize() > 256))
-                throw_oss<std::runtime_error>(std::ostringstream()
-                     << "Color map must have less or equal than "
-                     << (*stCompatiblePalette ? 16 :256)
-                     << " entries (currently: " << image.colorMapSize() << ")."
-                );
-
-            if (image.columns() % 16 != 0)
-                throw std::runtime_error("Width must be divisible by 16.");
+            if (*filter)
+                image.resize(geometry);
+            else
+                image.resize(geometry, FilterTypes::UndefinedFilter, 0.0);
         }
 
-        if (*bitsPerPixel && image.colorMapSize() > (1u << *bitsPerPixel))
-            throw_oss<std::runtime_error>(std::ostringstream()
-                << "Too few bpp for " << image.colorMapSize() << " colours."
-            );
+        if (oldTotalColors != image.totalColors()) {
+            if (*convert)
+                oldTotalColors = 1u << *bitsPerPixel;
+            else
+                convert = true;
+        }
+
+        image.quantizeDither(*dither);
+        image.quantizeColors(oldTotalColors);
+        image.quantize();
+
+        if (*bitsPerPixel && *bitsPerPixel <= 8) {
+            if (image.classType() != PseudoClass)
+                throw std::runtime_error("Not a pseudo class.");
+
+            if (*paletteBits && image.type() != PaletteType)
+                throw std::runtime_error("Not a palette type.");
+
+            if (*bitsPerPixel && image.colorMapSize() > (1u << *bitsPerPixel)) {
+                throw_oss<std::runtime_error>(std::ostringstream()
+                    << "Too few bpp for " << image.colorMapSize() << " colours."
+                );
+            }
+
+            if (image.columns() % 32 != 0)
+                throw std::runtime_error("Width must be divisible by 32.");
+        }
 
         std::ofstream ofs(outputFilename, std::ofstream::binary);
         if (!ofs)

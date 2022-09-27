@@ -36,6 +36,8 @@
 std::optional<int16_t>  bitmapWidth;          // -1 (if original width) or any number
 std::optional<int16_t>  bitmapHeight;         // -1 (if original height) or any number
 std::optional<bool>     convert;              // if true, convert to desired bit depth
+std::optional<bool>     filter;               // if true, use filtering when resizing
+std::optional<bool>     dither;               // if true, use dithering when resizing and/or converting colours
 
 std::optional<int16_t>  bitsPerPixel;         // 1, 2, 4, 8 (both planar and chunky); 16, 24, 32 (chunky only) or 0 (if explicitly disabled)
 std::optional<int16_t>  bytesPerChunk;        // -1 (if implicit/packed), 1, 2, 3, 4 or 0 (if disabled)
@@ -49,6 +51,8 @@ std::optional<bool>     ttCompatiblePalette;  // if true, use TT palette registe
 constexpr int16_t    DEFAULT_BITMAP_WIDTH = -1;
 constexpr int16_t   DEFAULT_BITMAP_HEIGHT = -1;
 constexpr bool           DEFAULT_CONVERT  = false;
+constexpr bool            DEFAULT_FILTER  = false;
+constexpr bool            DEFAULT_DITHER  = false;
 
 constexpr int16_t DEFAULT_BITS_PER_PIXEL  = 8;
 constexpr int16_t DEFAULT_BYTES_PER_CHUNK = 0;
@@ -75,6 +79,8 @@ static void print_help(const char* name)
         << "  -width <num>   specify new bitmap width [default " << DEFAULT_BITMAP_WIDTH << "]" << std::endl
         << "  -height <num>  specify new bitmap height [default " << DEFAULT_BITMAP_HEIGHT << "]" << std::endl
         << "  -convert       convert into specified colour depth [default " << std::boolalpha << DEFAULT_CONVERT << "]" << std::endl
+        << "  -filter        use filtering when resizing [default " << std::boolalpha << DEFAULT_FILTER << "]" << std::endl
+        << "  -dither        use dithering when resizing and/or converting colours [default " << std::boolalpha << DEFAULT_DITHER << "]" << std::endl
         << "  -bpp <num>     bits per pixel, i.e. colour depth (0, 1, 2, 4, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
         << "  -bpc <num>     bytes per chunk (-1 for packed chunky pixels [default for bpp > 8], 0, 1, 2, 3, 4) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
         << "  -pal <num>     number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
@@ -107,7 +113,7 @@ static std::string get_filename_ext()
 
 std::string parse_arguments(int argc, char* argv[])
 {
-    if (argc < 2 || argc > 10) {
+    if (argc < 2 || argc > 15) {
         print_help("uconvert"/*argv[0]*/);
     }
 
@@ -127,6 +133,12 @@ std::string parse_arguments(int argc, char* argv[])
 
             if (!convert.has_value())
                 convert = DEFAULT_CONVERT;
+
+            if (!filter.has_value())
+                filter = DEFAULT_FILTER;
+
+            if (!dither.has_value())
+                dither = DEFAULT_DITHER;
 
             if (!bitsPerPixel.has_value())
                 bitsPerPixel = DEFAULT_BITS_PER_PIXEL;
@@ -166,8 +178,8 @@ std::string parse_arguments(int argc, char* argv[])
             if (*bitsPerPixel > 8 && *ttCompatiblePalette)
                 throw std::invalid_argument("'-tt' requires 1, 2, 4 or 8 bits per pixel.");
 
-            //if (*bitsPerPixel == 2 && !*stCompatiblePalette)
-            //    throw std::invalid_argument("'2 bits per pixel work only with '-st'");
+            if (*bitsPerPixel == 2 && !*stCompatiblePalette)
+                throw std::invalid_argument("'2 bits per pixel work only with '-st'");
 
             if (*bytesPerChunk && !*bitsPerPixel)
                 throw std::invalid_argument("-bpc requires bpp > 0.");
@@ -182,6 +194,16 @@ std::string parse_arguments(int argc, char* argv[])
         // flags
         if (arg == "-convert") {
             convert = true;
+            continue;
+        }
+
+        if (arg == "-filter") {
+            filter = true;
+            continue;
+        }
+
+        if (arg == "-dither") {
+            dither = true;
             continue;
         }
 

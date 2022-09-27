@@ -28,6 +28,8 @@
 extern std::optional<int16_t>  bitmapWidth;           // -1 (if original width) or any number
 extern std::optional<int16_t>  bitmapHeight;          // -1 (if original height) or any number
 extern std::optional<bool>     convert;               // if true, convert to desired bit depth
+extern std::optional<bool>     filter;                // if true, use filtering when resizing
+extern std::optional<bool>     dither;                // if true, use dithering when resizing and/or converting colours
 
 extern std::optional<int16_t>   bitsPerPixel;         // 1, 2, 4, 8 (both planar and chunky); 15, 16, 24, 32 (chunky only) or 0 (if explicitly disabled)
 extern std::optional<int16_t>   bytesPerChunk;        // -1 (if implicit/packed), 1, 2, 3, 4 or 0 (if disabled)
