@@ -27,7 +27,6 @@
 
 extern std::optional<int16_t>  bitmapWidth;           // -1 (if original width) or any number
 extern std::optional<int16_t>  bitmapHeight;          // -1 (if original height) or any number
-extern std::optional<bool>     convert;               // if true, convert to desired bit depth
 extern std::optional<bool>     filter;                // if true, use filtering when resizing
 extern std::optional<bool>     dither;                // if true, use dithering when resizing and/or converting colours
 

@@ -220,19 +220,19 @@ static void copy_buffer(std::vector<uint8_t>& buffer, const Image& image)
         } break;
 
         case 16: {
-            const uint8_t r = pPixelPackets->red   * ((1 << 5) - 1);
-            const uint8_t g = pPixelPackets->green * ((1 << 6) - 1);
-            const uint8_t b = pPixelPackets->blue  * ((1 << 5) - 1);
+            const uint8_t r = static_cast<uint8_t>((pPixelPackets->red   / MaxRGBDouble) * ((1 << 5) - 1) + 0.5);
+            const uint8_t g = static_cast<uint8_t>((pPixelPackets->green / MaxRGBDouble) * ((1 << 6) - 1) + 0.5);
+            const uint8_t b = static_cast<uint8_t>((pPixelPackets->blue  / MaxRGBDouble) * ((1 << 5) - 1) + 0.5);
             chunk = (r << 11) | (g << 5) | b;
         } break;
 
         case 24:
         case 32: {
-            const uint8_t r = pPixelPackets->red   * ((1 << 8) - 1);
-            const uint8_t g = pPixelPackets->green * ((1 << 8) - 1);
-            const uint8_t b = pPixelPackets->blue  * ((1 << 8) - 1);
+            const uint8_t r = static_cast<uint8_t>((pPixelPackets->red   / MaxRGBDouble) * ((1 << 8) - 1) + 0.5);
+            const uint8_t g = static_cast<uint8_t>((pPixelPackets->green / MaxRGBDouble) * ((1 << 8) - 1) + 0.5);
+            const uint8_t b = static_cast<uint8_t>((pPixelPackets->blue  / MaxRGBDouble) * ((1 << 8) - 1) + 0.5);
             // TODO: true alpha channel?
-            chunk = (r << 24) | (g << 16) | (b << 8) | 0xffu;    // RGBA with full opacity
+            chunk = 0xff000000u | (r << 16) | (g << 8) | b;    // ARGB with full opacity
         } break;
 
         default:
@@ -297,8 +297,6 @@ int main(int argc, char* argv[])
         else if (*bitmapHeight <= 0)
             throw std::invalid_argument("Height must be a positive number.");
 
-        auto oldTotalColors = image.totalColors();
-
         if (static_cast<unsigned int>(*bitmapWidth) != image.columns() || static_cast<unsigned int>(*bitmapHeight) != image.rows()) {
             Geometry geometry;
             geometry.width(static_cast<unsigned int>(*bitmapWidth));
@@ -311,18 +309,15 @@ int main(int argc, char* argv[])
                 image.resize(geometry, FilterTypes::UndefinedFilter, 0.0);
         }
 
-        if (oldTotalColors != image.totalColors()) {
-            if (*convert)
-                oldTotalColors = 1u << *bitsPerPixel;
-            else
-                convert = true;
-        }
-
-        image.quantizeDither(*dither);
-        image.quantizeColors(oldTotalColors);
-        image.quantize();
-
         if (*bitsPerPixel && *bitsPerPixel <= 8) {
+            if (image.totalColors() > (1u << *bitsPerPixel)) {
+                std::cout << "Converting from " << image.totalColors() << " to " << (1ul << *bitsPerPixel) << " colours." << std::endl;
+
+                image.quantizeDither(*dither);
+                image.quantizeColors(1u << *bitsPerPixel);
+                image.quantize();
+            }
+
             if (image.classType() != PseudoClass)
                 throw std::runtime_error("Not a pseudo class.");
 
@@ -396,7 +391,7 @@ int main(int argc, char* argv[])
     }
 
     std::cout << "File " << outputFilename
-              << " (" << image.columns() << "x" << image.rows() << "@" << image.colorMapSize() << ") "
+              << " (" << *bitmapWidth << "x" << *bitmapHeight << "@" << *bitsPerPixel << ") "
               << "has been saved." << std::endl;
 
     return EXIT_SUCCESS;
