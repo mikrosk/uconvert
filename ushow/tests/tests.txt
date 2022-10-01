@@ -1,0 +1,83 @@
+falcon+sv:
+==========
+
+test-f.bp1:	garbage na oboch!	<--
+test-st.bp1:	ok
+test-tt.bp1:	err
+
+test-st.bp2:	ok
+test-tt.bp2:	err
+
+test-f.bp4:	ok
+test-st.bp4:	ok
+test-tt.bp4:	err
+
+test-f.bp8:	ok
+test-tt.bp8:	err
+
+test-f.c04:	ok
+test-st.c04:	ok
+test-tt.c04:	err
+
+test-f.c08:	s -c2p / bez -cp2 ok
+test-tt.c08:	err
+
+test.c16:	ok
+
+test.c32:	ok
+
+falcon/vga:
+===========
+
+test-f.bp1:	ok
+test-st.bp1:	ok
+test-tt.bp1:	err
+
+test-st.bp2:	ok
+test-tt.bp2:	err
+
+test-f.bp4:	ok
+test-st.bp4:	ok
+test-tt.bp4:	err
+
+test-f.bp8:	ok
+test-tt.bp8:	err
+
+test-f.c04:	ok
+test-st.c04:	ok
+test-tt.c04:	err
+
+test-f.c08:	ok
+test-tt.c08:	err
+
+test.c16:	ok
+
+test.c32:	err
+
+falcon/rgb:
+===========
+
+test-f.bp1:	nejake divne ciary napravo? moznoze toto je ten dovod na zakazanych 320xYYY v mono?
+test-st.bp1:	ok
+test-tt.bp1:	err
+
+test-st.bp2:	ok
+test-tt.bp2:	err
+
+test-f.bp4:	ok
+test-st.bp4:	ok
+test-tt.bp4:	err
+
+test-f.bp8:	ok
+test-tt.bp8:	err
+
+test-f.c04:	ok
+test-st.c04:	ok
+test-tt.c04:	err
+
+test-f.c08:	ok
+test-tt.c08:	err
+
+test.c16:	ok, ale divne biele pozadie
+
+test.c32:	err
