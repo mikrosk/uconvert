@@ -62,6 +62,7 @@ typedef enum {
     RezValueTTHigh = 6     // 1280x960@1bpp, TT palette
 } SteTtRezValue;
 
+static bool c2p;
 static FileHeader file_header;
 static uint16_t width;
 static uint16_t height;
@@ -78,7 +79,7 @@ static void print_help()
     exit(EXIT_FAILURE);
 }
 
-static void load_bitmap(char* buffer, FILE* f, bool c2p)
+static void load_bitmap(char* buffer, FILE* f)
 {
     char* c2p_buffer = NULL;
 
@@ -160,7 +161,6 @@ int main(int argc, char* argv[])
         print_help();
     }
 
-    bool c2p = false;
     if (argc == 3) {
         if (strcmp(argv[1], "-c2p") == 0)
             c2p = true;
@@ -382,22 +382,87 @@ int main(int argc, char* argv[])
         }
 
         if (falcon_mode != -1) {
-            // TODO: if bitmap doesn't fit default screen size, try to enlarge it (COL80, VERTFLAG, SuperVidel)
+            // on Falcon we always create multiplies of 320x240 (VGA) / 320x200 (RGB/TV)
+            if (palette_type != PaletteTypeSTE && (width > screen_width || height > screen_height)) {
+                // applies to pure Falcon resolutions only
+                if (!mono_monitor && VgetMonitor() != MON_VGA && !supervidel) {
+                    // try overscan first
+                    if (width <= screen_width*1.2 && height <= screen_height*1.2) {
+                        falcon_mode   |= COL40 | OVERSCAN;
+                        screen_width  *= 1.2;
+                        screen_height *= 1.2;
+                    } else if (width <= screen_width*2 && height <= screen_height*2) {
+                        falcon_mode   |= COL80 | VERTFLAG;
+                        screen_width  *= 2;
+                        screen_height *= 2;
+                    } else {
+                        falcon_mode   |= COL80 | VERTFLAG | OVERSCAN;
+                        screen_width  *= 1.2 * 2;
+                        screen_height *= 1.2 * 2;
+                    }
+                } else if (VgetMonitor() == MON_VGA) {
+                    falcon_mode |= COL80;
 
-            if (screen_width == 640)
-                falcon_mode |= COL80;
-            else if (screen_width == 320)
-                falcon_mode |= COL40;
+                    // try non-SuperVidel options first
+                    if (file_header.bitsPerPixel <= 8 && ((width <= screen_width*2 && height <= screen_height*2) || !supervidel)) {
+                        screen_width *= 2;
+                        screen_height *= 2;
+                    } else if (supervidel) {
+                        // at this point we are going full SuperVidel (640x480@16bpp works without SVEXT, too but why bother)
+                        falcon_mode |= SVEXT;
+
+                        if (width <= 640 && height <= 480) {
+                            falcon_mode  |= SVEXT_BASERES(0);
+                            screen_width  = 640;
+                            screen_height = 480;
+                        } else if (width <= 800 && height <= 600) {
+                            falcon_mode  |= SVEXT_BASERES(1);
+                            screen_width  = 800;
+                            screen_height = 600;
+                        } else if (width <= 1024 && height <= 768) {
+                            falcon_mode  |= SVEXT_BASERES(2);
+                            screen_width  = 1024;
+                            screen_height = 768;
+                        } else if (width <= 1280 && height <= 720) {
+                            falcon_mode  |= SVEXT_BASERES(0) | OVERSCAN;
+                            screen_width  = 1280;
+                            screen_height = 720;
+                        } else if (width <= 1280 && height <= 1024) {
+                            falcon_mode  |= SVEXT_BASERES(3);
+                            screen_width  = 1280;
+                            screen_height = 1024;
+                        } else if (width <= 1680 && height <= 1050) {
+                            falcon_mode  |= SVEXT_BASERES(1) | OVERSCAN;
+                            screen_width  = 1680;
+                            screen_height = 1050;
+                        } else if (width <= 1600 && height <= 1200) {
+                            falcon_mode  |= SVEXT_BASERES(4);
+                            screen_width  = 1600;
+                            screen_height = 1200;
+                        } else {
+                            falcon_mode  |= SVEXT_BASERES(2) | OVERSCAN;
+                            screen_width  = 1920;
+                            screen_height = 1080;
+                        }
+                    }
+                }
+            } else  {
+                // ST-compatible modes or no change at all
+                if (screen_width == 640)
+                    falcon_mode |= COL80;
+                else if (screen_width == 320)
+                    falcon_mode |= COL40;
+
+                if (palette_type == PaletteTypeSTE)
+                    falcon_mode |= STMODES;
+
+                if (((falcon_mode & VGA) && (screen_height == 200 || screen_height == 240))
+                        || (!(falcon_mode & VGA) && (screen_height == 400 || screen_height == 480)))
+                    falcon_mode |= VERTFLAG;
+            }
 
             falcon_mode |= (old_falcon_mode & VGA);
             falcon_mode |= (old_falcon_mode & PAL);
-
-            if (palette_type == PaletteTypeSTE || palette_type == PaletteTypeTT)
-                falcon_mode |= STMODES;
-
-            if (((falcon_mode & VGA) && (screen_height == 200 || screen_height == 240))
-                 || (!(falcon_mode & VGA) && (screen_height == 400 || screen_height == 480)))
-                falcon_mode |= VERTFLAG;
         }
     }
 
@@ -437,7 +502,7 @@ int main(int argc, char* argv[])
     char* screen_aligned = (char*)(((uintptr_t)screen + 15) & 0xfffffff0);
     memset(screen_aligned, 0, screen_width * screen_height * screen_bpp / 8);
 
-    load_bitmap(screen_aligned, f, c2p);
+    load_bitmap(screen_aligned, f);
     fclose(f);
 
     switch (vdo_val) {
@@ -492,9 +557,9 @@ int main(int argc, char* argv[])
         Setscreen(SCR_NOCHANGE, old_physbase, old_ste_tt_rez);
     } else if (old_falcon_mode != -1) {
         // make VDI (and SuperVidel registers) happy
-        //VsetScreen(SCR_NOCHANGE, old_physbase, 3, old_falcon_mode);
-        VsetMode(old_falcon_mode);
+        //VsetScreen(SCR_NOCHANGE, old_physbase, SCR_NOCHANGE, old_falcon_mode);
         VsetScreen(SCR_NOCHANGE, old_physbase, SCR_NOCHANGE, SCR_NOCHANGE);
+        VsetMode(old_falcon_mode);
     }
 
     switch (vdo_val) {

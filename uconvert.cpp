@@ -22,6 +22,7 @@
 using namespace Magick;
 
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -255,20 +256,23 @@ static void copy_buffer(std::vector<uint8_t>& buffer, const Image& image)
 
 static void copy_packed_buffer(std::vector<uint8_t>& buffer, const Image& image)
 {
-    const PixelPacket* pPixelPackets = image.getConstPixels(0, 0, image.columns(), image.rows());
+    // unfortunately, we really need to call this one even if it's useless
+    image.getConstPixels(0, 0, image.columns(), image.rows());
     const IndexPacket* pIndexPackets = image.getConstIndexes();
 
     const size_t pixelsPerChunk = 8 / *bitsPerPixel;
 
-    for (const PixelPacket* pPixelPacketsEnd = pPixelPackets + image.columns() * image.rows();
-         pPixelPackets != pPixelPacketsEnd; pPixelPackets += pixelsPerChunk)
+    for (const IndexPacket* pIndexPacketsEnd = pIndexPackets + image.columns() * image.rows();
+         pIndexPackets != pIndexPacketsEnd;)
     {
         uint8_t chunk = 0;
-        for (size_t i = 0; i < pixelsPerChunk; ++i) {
+        for (size_t i = 0; i < pixelsPerChunk - 1; ++i) {
             assert(*pIndexPackets < (1 << *bitsPerPixel));
             chunk += *pIndexPackets++;
             chunk <<= *bitsPerPixel;
         }
+        assert(*pIndexPackets < (1 << *bitsPerPixel));
+        chunk += *pIndexPackets++;
 
         buffer.push_back(chunk);
     }
@@ -298,6 +302,8 @@ int main(int argc, char* argv[])
             throw std::invalid_argument("Height must be a positive number.");
 
         if (static_cast<unsigned int>(*bitmapWidth) != image.columns() || static_cast<unsigned int>(*bitmapHeight) != image.rows()) {
+            float old_ratio = (float)image.columns() / (float)image.rows();
+
             Geometry geometry;
             geometry.width(static_cast<unsigned int>(*bitmapWidth));
             geometry.height(static_cast<unsigned int>(*bitmapHeight));
@@ -307,6 +313,11 @@ int main(int argc, char* argv[])
                 image.resize(geometry);
             else
                 image.resize(geometry, FilterTypes::UndefinedFilter, 0.0);
+
+            float new_ratio = (float)image.columns() / (float)image.rows();
+
+            if (std::fabs(old_ratio - new_ratio) > 0.001)
+                std::cout << "Aspect ratio changed; old: " << old_ratio << ", new: " << new_ratio << std::endl;
         }
 
         if (*bitsPerPixel && *bitsPerPixel <= 8) {
