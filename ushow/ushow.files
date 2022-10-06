@@ -1,7 +1,16 @@
+bitmap_info.c
+bitmap_info.h
 c2p-asm.h
 c2p1x1_4.s
 c2p1x1_6.s
 c2p1x1_8.s
+load_bitmap.c
+load_bitmap.h
+palette_type.h
 screen-asm.h
 screen-asm.s
+screen_info.c
+screen_info.h
+uimg.h
 ushow.c
+vdo.h

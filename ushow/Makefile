@@ -22,7 +22,7 @@ all: $(TARGET).ttp
 $(TARGET).ttp: $(TARGET)
 	cp $< $@
 
-$(TARGET): ushow.o screen-asm.o c2p1x1_4.o c2p1x1_6.o c2p1x1_8.o
+$(TARGET): ushow.o bitmap_info.o load_bitmap.o screen_info.o screen-asm.o c2p1x1_4.o c2p1x1_6.o c2p1x1_8.o
 
 .PHONY: clean
 clean:
