@@ -55,7 +55,7 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
     }
 
     bool file_error = false;
-    char* p = screen + screen_y_offset * (screen_info->width * screen_info->bpp / 8);
+    char* p = screen_aligned + screen_y_offset * (screen_info->width * screen_info->bpp / 8);
     for (size_t i = 0; i < final_height; ++i) {
         p += screen_x_offset * screen_info->bpp / 8;
 

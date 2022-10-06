@@ -141,10 +141,15 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
         }
 
         if (screen_info.mode != -1) {
+            bool changed = false;
+            screen_info.mode |= (screen_info.old_mode & VGA);
+            screen_info.mode |= (screen_info.old_mode & PAL);
+
             // on Falcon we always create multiplies of 320x240 (VGA) / 320x200 (RGB/TV)
             if (bitmap_info->palette_type != PaletteTypeSTE && (bitmap_info->width > screen_info.width || bitmap_info->height > screen_info.height)) {
                 // applies to pure Falcon resolutions only
                 if (!mono_monitor && VgetMonitor() != MON_VGA && !supervidel) {
+                    changed = true;
                     // try overscan first
                     if (bitmap_info->width <= screen_info.width*1.2 && bitmap_info->height <= screen_info.height*1.2) {
                         screen_info.mode   |= COL40 | OVERSCAN;
@@ -160,15 +165,16 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
                         screen_info.height *= 1.2 * 2;
                     }
                 } else if (VgetMonitor() == MON_VGA) {
-                    screen_info.mode |= COL80;
-
                     // try non-SuperVidel options first
                     if (bitmap_info->bpp <= 8 && ((bitmap_info->width <= screen_info.width*2 && bitmap_info->height <= screen_info.height*2) || !supervidel)) {
-                        screen_info.width *= 2;
+                        changed = true;
+                        screen_info.mode   |= COL80;
+                        screen_info.width  *= 2;
                         screen_info.height *= 2;
                     } else if (supervidel) {
+                        changed = true;
                         // at this point we are going full SuperVidel (640x480@16bpp works without SVEXT, too but why bother)
-                        screen_info.mode |= SVEXT;
+                        screen_info.mode |= COL80 | SVEXT;
 
                         if (bitmap_info->width <= 640 && bitmap_info->height <= 480) {
                             screen_info.mode  |= SVEXT_BASERES(0);
@@ -205,7 +211,9 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
                         }
                     }
                 }
-            } else  {
+            }
+
+            if (!changed) {
                 // ST-compatible modes or no change at all
                 if (screen_info.width == 640)
                     screen_info.mode |= COL80;
@@ -219,9 +227,6 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
                         || (!(screen_info.mode & VGA) && (screen_info.height == 400 || screen_info.height == 480)))
                     screen_info.mode |= VERTFLAG;
             }
-
-            screen_info.mode |= (screen_info.old_mode & VGA);
-            screen_info.mode |= (screen_info.old_mode & PAL);
         }
     }
 
