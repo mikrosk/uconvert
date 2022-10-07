@@ -1,5 +1,6 @@
 #include "load_bitmap.h"
 
+#include "mint/falcon.h"
 #include <mint/osbind.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -17,7 +18,8 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
         exit(EXIT_FAILURE);
     }
 
-    bool c2p = bitmap_info->bpc == 1 && (bitmap_info->bpp == 4 || bitmap_info->bpp == 8);
+    bool c2p = bitmap_info->bpc == 1 && (bitmap_info->bpp == 4 || bitmap_info->bpp == 8)
+            && (screen_info->mode & 0x07) != BPS8C;
 
     char* screen_aligned = (char*)(((uintptr_t)screen + 15) & 0xfffffff0);
     memset(screen_aligned, 0, screen_info->width * screen_info->height * screen_info->bpp / 8);
