@@ -31,6 +31,12 @@
 #include "screen-asm.h"
 #include "screen_info.h"
 
+static struct {
+    BitmapInfo bitmap_info;
+    ScreenInfo screen_info;
+    void*      screen;
+} page[256];
+
 static void print_help()
 {
     fprintf(stderr, "Usage: ushow.ttp <filename.ext> [<filename.ext>]...\r\n");
@@ -45,8 +51,6 @@ int main(int argc, char* argv[])
         print_help();
     }
 
-    // TODO: two filenames
-
     long vdo_val = VdoValueST << 16;
     Getcookie(C__VDO, &vdo_val);
     vdo_val >>= 16;	// interested in the upper word only
@@ -57,52 +61,56 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    FILE* f = fopen(argv[argc-1], "rb");
-    if (!f) {
-        fprintf(stderr, "Failed to open '%s'.\r\n", argv[argc-1]);
-        getchar();
-        return EXIT_FAILURE;
-    }
-
-    BitmapInfo bitmap_info = load_bitmap_info(f, vdo_val);
-
-    if (bitmap_info.width == 0 || bitmap_info.height == 0) {
-        fprintf(stdout, "No bitmap data - nothing to show.\r\n");
-        getchar();
-        return EXIT_SUCCESS;
-    }
-
-    ScreenInfo screen_info = get_screen_info(&bitmap_info, vdo_val);
-
-    if (screen_info.rez == -1 && screen_info.mode == -1) {
-        fprintf(stderr, "Unable to display: %dx%d@%dbpp (%s).\r\n",
-                bitmap_info.width, bitmap_info.height, bitmap_info.bpp,
-                bitmap_info.bpc == 0 ? "planar": "chunky");
-
-        char* pal_str = "Unknown (?)";
-        switch (bitmap_info.palette_type) {
-        case PaletteTypeNone:
-            pal_str = "None";
-            break;
-        case PaletteTypeSTE:
-            pal_str = "ST/E";
-            break;
-        case PaletteTypeTT:
-            pal_str = "TT";
-            break;
-        case PaletteTypeFalcon:
-            pal_str = "Falcon";
-            break;
+    for (int i = 0; i < argc-1; ++i) {
+        FILE* f = fopen(argv[i+1], "rb");
+        if (!f) {
+            fprintf(stderr, "Failed to open '%s'.\r\n", argv[i+1]);
+            getchar();
+            return EXIT_FAILURE;
         }
-        fprintf(stderr, "Palette: %s.\r\n", pal_str);
 
-        getchar();
-        return EXIT_FAILURE;
+        printf("Processing '%s' ...\r\n", argv[i+1]);
+
+        page[i].bitmap_info = load_bitmap_info(f, vdo_val);
+
+        if (page[i].bitmap_info.width == 0 || page[i].bitmap_info.height == 0) {
+            fprintf(stdout, "No bitmap data - nothing to show.\r\n");
+            getchar();
+            return EXIT_SUCCESS;
+        }
+
+        page[i].screen_info = get_screen_info(&page[i].bitmap_info, vdo_val);
+
+        if (page[i].screen_info.rez == -1 && page[i].screen_info.mode == -1) {
+            fprintf(stderr, "Unable to display: %dx%d@%dbpp (%s).\r\n",
+                    page[i].bitmap_info.width, page[i].bitmap_info.height, page[i].bitmap_info.bpp,
+                    page[i].bitmap_info.bpc == 0 ? "planar": "chunky");
+
+            char* pal_str = "Unknown (?)";
+            switch (page[i].bitmap_info.palette_type) {
+            case PaletteTypeNone:
+                pal_str = "None";
+                break;
+            case PaletteTypeSTE:
+                pal_str = "ST/E";
+                break;
+            case PaletteTypeTT:
+                pal_str = "TT";
+                break;
+            case PaletteTypeFalcon:
+                pal_str = "Falcon";
+                break;
+            }
+            fprintf(stderr, "Palette: %s.\r\n", pal_str);
+
+            getchar();
+            return EXIT_FAILURE;
+        }
+
+        page[i].screen = load_bitmap(f, &page[i].bitmap_info, &page[i].screen_info);
+
+        fclose(f);
     }
-
-    char* screen_aligned = load_bitmap(f, &bitmap_info, &screen_info);
-
-    fclose(f);
 
     switch (vdo_val) {
     case VdoValueST:
@@ -119,46 +127,67 @@ int main(int argc, char* argv[])
 
     void* old_physbase = Physbase();
 
-    if (screen_info.rez != -1) {
-        Setscreen(SCR_NOCHANGE, screen_aligned, screen_info.rez);
-    } else if (screen_info.mode != -1) {
-        // VsetScreen(SCR_NOCHANGE, screen_aligned, SCR_MODECODE, falcon_mode);
-        // doesn't work as expected -- it not only reinitialises VT52 (useless for us)
-        // but also expects *both* logbase and physbase be of an equal size, nicely
-        // crashing if logbase is smaller. So don't bother, just use two separate calls.
-        VsetMode(screen_info.mode);
-        VsetScreen(SCR_NOCHANGE, screen_aligned, SCR_NOCHANGE, SCR_NOCHANGE);
-    }
+    //////////////////////////////////////////////////////////////////////////
 
-    if (bitmap_info.palette_type != PaletteTypeNone) {
-        // Vsync() is needed for catching up with (V)setScreen()
+    uint8_t ch = 0xff;
+    int page_index = 0;
+    do {
+        int prev_page_index = page_index;
+
+        if (ch == 0x4d) {   // right arrow
+            page_index++;
+            if (page_index > argc-2)
+                page_index = 0;
+        } else if (ch == 0x4b) {    // left arrow
+            page_index--;
+            if (page_index < 0)
+                page_index = argc-2;
+        }
+
+        if (prev_page_index == page_index && ch != 0xff)
+            continue;
+
+        // Vsync() is needed for catching up raw palette access with (V)setScreen()
         // otherwise the new mode will reset the newly set palette
         Vsync();
 
-        int32_t ssp = Super(0L);
-
-        // Don't use Setpalette() / EsetPalette() / VsetRGB() here as we want to work
-        // we the native palette format for given machine
-        if (bitmap_info.palette_type == PaletteTypeSTE)
-            asm_screen_set_ste_palette(bitmap_info.palette.ste, 1 << bitmap_info.bpp);
-        else if (bitmap_info.palette_type == PaletteTypeTT)
-            asm_screen_set_tt_palette(bitmap_info.palette.tt, 1 << bitmap_info.bpp);
-        else if (bitmap_info.palette_type == PaletteTypeFalcon) {
-            asm_screen_set_falcon_palette(bitmap_info.palette.falcon, 1 << bitmap_info.bpp);
+        if (page[page_index].screen_info.rez != -1) {
+            Setscreen(SCR_NOCHANGE, page[page_index].screen, page[page_index].screen_info.rez);
+        } else if (page[page_index].screen_info.mode != -1) {
+            // VsetScreen(SCR_NOCHANGE, page[page_index].screen, SCR_MODECODE, page[page_index].screen_infomode);
+            // doesn't work as expected -- it not only reinitialises VT52 (useless for us)
+            // but also expects *both* logbase and physbase be of an equal size, nicely
+            // crashing if logbase is smaller. So don't bother, just use two separate calls.
+            VsetMode(page[page_index].screen_info.mode);
+            VsetScreen(SCR_NOCHANGE, page[page_index].screen, SCR_NOCHANGE, SCR_NOCHANGE);
         }
 
-        Super(ssp);
-    }
+        if (page[page_index].bitmap_info.palette_type != PaletteTypeNone) {
+            int32_t ssp = Super(0L);
 
-    getchar();
+            // Don't use Setpalette() / EsetPalette() / VsetRGB() here as we want to work
+            // we the native palette format for given machine
+            if (page[page_index].bitmap_info.palette_type == PaletteTypeSTE)
+                asm_screen_set_ste_palette(page[page_index].bitmap_info.palette.ste, 1 << page[page_index].bitmap_info.bpp);
+            else if (page[page_index].bitmap_info.palette_type == PaletteTypeTT)
+                asm_screen_set_tt_palette(page[page_index].bitmap_info.palette.tt, 1 << page[page_index].bitmap_info.bpp);
+            else if (page[page_index].bitmap_info.palette_type == PaletteTypeFalcon) {
+                asm_screen_set_falcon_palette(page[page_index].bitmap_info.palette.falcon, 1 << page[page_index].bitmap_info.bpp);
+            }
 
-    if (screen_info.old_rez != -1) {
-        Setscreen(SCR_NOCHANGE, old_physbase, screen_info.old_rez);
-    } else if (screen_info.old_mode != -1) {
+            Super(ssp);
+        }
+    } while ((ch = ((Crawcin() >> 16) & 0xff)) != 0x01);    // ESC
+
+    //////////////////////////////////////////////////////////////////////////
+
+    if (page[0].screen_info.old_rez != -1) {
+        Setscreen(SCR_NOCHANGE, old_physbase, page[0].screen_info.old_rez);
+    } else if (page[0].screen_info.old_mode != -1) {
         // make VDI (and SuperVidel registers) happy
-        //VsetScreen(SCR_NOCHANGE, old_physbase, SCR_NOCHANGE, old_falcon_mode);
+        //VsetScreen(SCR_NOCHANGE, old_physbase, SCR_NOCHANGE, page[0].old_falcon_mode);
         VsetScreen(SCR_NOCHANGE, old_physbase, SCR_NOCHANGE, SCR_NOCHANGE);
-        VsetMode(screen_info.old_mode);
+        VsetMode(page[0].screen_info.old_mode);
     }
 
     switch (vdo_val) {
