@@ -8,7 +8,7 @@
 
 #include "c2p-asm.h"
 
-void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* screen_info, bool c2p)
+void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* screen_info)
 {
     char* screen = (char*)Mxalloc((screen_info->width * screen_info->height * screen_info->bpp / 8) + 15, MX_STRAM);
     if (!screen) {
@@ -16,6 +16,8 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
         getchar();
         exit(EXIT_FAILURE);
     }
+
+    bool c2p = bitmap_info->bpc == 1 && (bitmap_info->bpp == 4 || bitmap_info->bpp == 8);
 
     char* screen_aligned = (char*)(((uintptr_t)screen + 15) & 0xfffffff0);
     memset(screen_aligned, 0, screen_info->width * screen_info->height * screen_info->bpp / 8);
@@ -93,5 +95,5 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
 
     free(c2p_buffer);
 
-    return screen;
+    return screen_aligned;
 }

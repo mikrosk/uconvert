@@ -18,11 +18,9 @@
  *
  */
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 
 #include <mint/cookie.h>
 #include <mint/falcon.h>
@@ -35,7 +33,7 @@
 
 static void print_help()
 {
-    fprintf(stderr, "Usage: ushow.ttp [-c2p] <filename.ext> [<filename.ext>]\r\n");
+    fprintf(stderr, "Usage: ushow.ttp <filename.ext> [<filename.ext>]...\r\n");
     fprintf(stderr, "Press enter to exit.\r\n");
     getchar();
     exit(EXIT_FAILURE);
@@ -43,17 +41,11 @@ static void print_help()
 
 int main(int argc, char* argv[])
 {
-    if (argc < 2 || argc > 4) {
+    if (argc < 2) {
         print_help();
     }
 
-    bool c2p = false;
-
-    if (argc > 2) {
-        if (strcmp(argv[1], "-c2p") == 0)
-            c2p = true;
-        // TODO: two filenames
-    }
+    // TODO: two filenames
 
     long vdo_val = VdoValueST << 16;
     Getcookie(C__VDO, &vdo_val);
@@ -72,7 +64,7 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    BitmapInfo bitmap_info = load_bitmap_info(f, vdo_val, c2p);
+    BitmapInfo bitmap_info = load_bitmap_info(f, vdo_val);
 
     if (bitmap_info.width == 0 || bitmap_info.height == 0) {
         fprintf(stdout, "No bitmap data - nothing to show.\r\n");
@@ -80,7 +72,7 @@ int main(int argc, char* argv[])
         return EXIT_SUCCESS;
     }
 
-    ScreenInfo screen_info = get_screen_info(&bitmap_info, vdo_val, c2p);
+    ScreenInfo screen_info = get_screen_info(&bitmap_info, vdo_val);
 
     if (screen_info.rez == -1 && screen_info.mode == -1) {
         fprintf(stderr, "Unable to display: %dx%d@%dbpp (%s).\r\n",
@@ -108,7 +100,7 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    char* screen_aligned = load_bitmap(f, &bitmap_info, &screen_info, c2p);
+    char* screen_aligned = load_bitmap(f, &bitmap_info, &screen_info);
 
     fclose(f);
 

@@ -4,7 +4,7 @@
 #include <mint/falcon.h>
 #include <stdbool.h>
 
-ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val, const bool c2p)
+ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val)
 {
     ScreenInfo screen_info = {};
     screen_info.rez  = screen_info.old_rez  = -1;
@@ -34,7 +34,7 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
             }
             break;
         case 4:
-            if (!mono_monitor && (bitmap_info->bpc == 0 || (c2p && bitmap_info->bpc == 1))) {
+            if (!mono_monitor && (bitmap_info->bpc == 0 || bitmap_info->bpc == 1)) {
                 screen_info.width  = 320;
                 screen_info.height = 200;
                 screen_info.bpp    = 4;
@@ -66,7 +66,7 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
             }
             break;
         case 4:
-            if (!mono_monitor && (bitmap_info->bpc == 0 || (c2p && bitmap_info->bpc == 1))) {
+            if (!mono_monitor && (bitmap_info->bpc == 0 || bitmap_info->bpc == 1)) {
                 screen_info.width  = bitmap_info->palette_type == PaletteTypeSTE ? 320 : 640;
                 screen_info.height = bitmap_info->palette_type == PaletteTypeSTE ? 200 : 480;
                 screen_info.bpp    = 4;
@@ -74,7 +74,7 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
             }
             break;
         case 8:
-            if (!mono_monitor && (bitmap_info->bpc == 0 || (c2p && bitmap_info->bpc == 1))) {
+            if (!mono_monitor && (bitmap_info->bpc == 0 || bitmap_info->bpc == 1)) {
                 screen_info.width  = 320;
                 screen_info.height = 480;
                 screen_info.bpp    = 8;
@@ -107,7 +107,7 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
             }
             break;
         case 4:
-            if (!mono_monitor && (bitmap_info->bpc == 0 || (c2p && bitmap_info->bpc == 1))) {
+            if (!mono_monitor && (bitmap_info->bpc == 0 || bitmap_info->bpc == 1)) {
                 screen_info.width  = 320;
                 screen_info.height = bitmap_info->palette_type == PaletteTypeSTE || VgetMonitor() != MON_VGA ? 200 : 240;
                 screen_info.bpp    = 4;
@@ -115,11 +115,11 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
             }
             break;
         case 8:
-            if (!mono_monitor && (bitmap_info->bpc == 0 || ((c2p || supervidel) && bitmap_info->bpc == 1))) {
+            if (!mono_monitor && (bitmap_info->bpc == 0 || bitmap_info->bpc == 1)) {
                 screen_info.width  = 320;
                 screen_info.height = VgetMonitor() != MON_VGA ? 200 : 240;
                 screen_info.bpp    = 8;
-                screen_info.mode   = !c2p && bitmap_info->bpc == 1 && supervidel ? BPS8C : BPS8;
+                screen_info.mode   = bitmap_info->bpc == 1 && supervidel ? BPS8C : BPS8;
             }
             break;
         case 16:

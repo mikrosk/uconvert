@@ -1,7 +1,6 @@
 #ifndef SCREEN_INFO_H
 #define SCREEN_INFO_H
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -28,6 +27,6 @@ typedef struct
     int16_t mode, old_mode; // Falcon
 } ScreenInfo;
 
-extern ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val, const bool c2p);
+extern ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val);
 
 #endif

@@ -1,7 +1,6 @@
 #ifndef BITMAP_INFO_H
 #define BITMAP_INFO_H
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -22,6 +21,6 @@ typedef struct {
 } BitmapInfo;
 
 // exits on error
-BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val, const bool c2p);
+BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val);
 
 #endif
