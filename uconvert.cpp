@@ -88,11 +88,13 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
 
     // yes, the getter is non-const, sigh...
     for (size_t i = 0; i < const_cast<Image&>(image).colorMapSize(); ++i) {
-        const ColorRGB colorRgb(image.colorMap(i));
+        const Color color = image.colorMap(i);
 
-        const uint8_t r = colorRgb.red()   * ((1 << (*paletteBits/3)) - 1);
-        const uint8_t g = colorRgb.green() * ((1 << (*paletteBits/3)) - 1);
-        const uint8_t b = colorRgb.blue()  * ((1 << (*paletteBits/3)) - 1);
+        constexpr size_t shift = QuantumDepth - 8;
+
+        const uint8_t r = (color.redQuantum()   >> shift) >> (8 - *paletteBits/3);
+        const uint8_t g = (color.greenQuantum() >> shift) >> (8 - *paletteBits/3);
+        const uint8_t b = (color.blueQuantum()  >> shift) >> (8 - *paletteBits/3);
 
         if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
             switch (*paletteBits) {
@@ -221,19 +223,23 @@ static void copy_buffer(std::vector<uint8_t>& buffer, const Image& image)
         } break;
 
         case 16: {
-            const uint8_t r = static_cast<uint8_t>((pPixelPackets->red   / MaxRGBDouble) * ((1 << 5) - 1) + 0.5);
-            const uint8_t g = static_cast<uint8_t>((pPixelPackets->green / MaxRGBDouble) * ((1 << 6) - 1) + 0.5);
-            const uint8_t b = static_cast<uint8_t>((pPixelPackets->blue  / MaxRGBDouble) * ((1 << 5) - 1) + 0.5);
+            constexpr size_t shift = QuantumDepth - 8;
+
+            const uint8_t r = (pPixelPackets->red   >> shift) >> (8 - 5);
+            const uint8_t g = (pPixelPackets->green >> shift) >> (8 - 6);
+            const uint8_t b = (pPixelPackets->blue  >> shift) >> (8 - 5);
             chunk = (r << 11) | (g << 5) | b;
         } break;
 
         case 24:
         case 32: {
-            const uint8_t r = static_cast<uint8_t>((pPixelPackets->red   / MaxRGBDouble) * ((1 << 8) - 1) + 0.5);
-            const uint8_t g = static_cast<uint8_t>((pPixelPackets->green / MaxRGBDouble) * ((1 << 8) - 1) + 0.5);
-            const uint8_t b = static_cast<uint8_t>((pPixelPackets->blue  / MaxRGBDouble) * ((1 << 8) - 1) + 0.5);
-            // TODO: true alpha channel?
-            chunk = 0xff000000u | (r << 16) | (g << 8) | b;    // ARGB with full opacity
+            constexpr size_t shift = QuantumDepth - 8;
+
+            const uint8_t a = pPixelPackets->opacity >> shift;
+            const uint8_t r = pPixelPackets->red     >> shift;
+            const uint8_t g = pPixelPackets->green   >> shift;
+            const uint8_t b = pPixelPackets->blue    >> shift;
+            chunk = (a << 24) | (r << 16) | (g << 8) | b;    // ARGB
         } break;
 
         default:
@@ -282,7 +288,7 @@ int main(int argc, char* argv[])
 {
     std::string outputFilename;
 
-    InitializeMagick(*argv);
+    InitializeMagick(argv[0]);
     Image image;
 
     try {

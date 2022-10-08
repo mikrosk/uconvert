@@ -54,11 +54,13 @@ constexpr int16_t   DEFAULT_BITMAP_HEIGHT = -1;
 constexpr bool            DEFAULT_FILTER  = false;
 constexpr bool            DEFAULT_DITHER  = false;
 
-constexpr int16_t DEFAULT_BITS_PER_PIXEL  = 8;
-constexpr int16_t DEFAULT_BYTES_PER_CHUNK = 0;
-constexpr int16_t   DEFAULT_PALETTE_BITS  = 24;
-constexpr bool     DEFAULT_ST_COMPATIBLE  = false;
-constexpr bool     DEFAULT_TT_COMPATIBLE  = false;
+constexpr int16_t  DEFAULT_ST_BITS_PER_PIXEL = 4;
+constexpr int16_t    DEFAULT_BITS_PER_PIXEL  = 8;
+constexpr int16_t    DEFAULT_BYTES_PER_CHUNK = 0;
+constexpr int16_t DEFAULT_ST_TT_PALETTE_BITS = 12;
+constexpr int16_t      DEFAULT_PALETTE_BITS  = 24;
+constexpr bool        DEFAULT_ST_COMPATIBLE  = false;
+constexpr bool        DEFAULT_TT_COMPATIBLE  = false;
 
 std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::optional<int16_t>&>> allowedValues = {
     { "-bpp",    { { 0, 1, 2, 4, 8, 16, 24, 32 }, bitsPerPixel  } },
@@ -136,8 +138,18 @@ std::string parse_arguments(int argc, char* argv[])
             if (!dither.has_value())
                 dither = DEFAULT_DITHER;
 
-            if (!bitsPerPixel.has_value())
-                bitsPerPixel = DEFAULT_BITS_PER_PIXEL;
+            if (!stCompatiblePalette.has_value())
+                stCompatiblePalette = DEFAULT_ST_COMPATIBLE;
+
+            if (!ttCompatiblePalette.has_value())
+                ttCompatiblePalette = DEFAULT_TT_COMPATIBLE;
+
+            if (!bitsPerPixel.has_value()) {
+                if (*stCompatiblePalette)
+                    bitsPerPixel = DEFAULT_ST_BITS_PER_PIXEL;
+                else
+                    bitsPerPixel = DEFAULT_BITS_PER_PIXEL;
+            }
 
             if (!bytesPerChunk.has_value()) {
                 if (*bitsPerPixel > 8)
@@ -149,14 +161,12 @@ std::string parse_arguments(int argc, char* argv[])
                 bytesPerChunk = *bitsPerPixel / 8;
             }
 
-            if (!paletteBits.has_value() && *bitsPerPixel <= 8) // either not set or less than 8bpp
-                paletteBits = DEFAULT_PALETTE_BITS;
-
-            if (!stCompatiblePalette.has_value())
-                stCompatiblePalette = DEFAULT_ST_COMPATIBLE;
-
-            if (!ttCompatiblePalette.has_value())
-                ttCompatiblePalette = DEFAULT_TT_COMPATIBLE;
+            if (!paletteBits.has_value() && *bitsPerPixel <= 8) {   // either not set or less than 8bpp
+                if (*stCompatiblePalette || *ttCompatiblePalette)
+                    paletteBits = DEFAULT_ST_TT_PALETTE_BITS;
+                else
+                    paletteBits = DEFAULT_PALETTE_BITS;
+            }
 
             // do some sanity checks
             if (*stCompatiblePalette && *ttCompatiblePalette)
