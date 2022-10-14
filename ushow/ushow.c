@@ -18,10 +18,12 @@
  *
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 
+#include <gem.h>
 #include <mint/cookie.h>
 #include <mint/falcon.h>
 #include <mint/osbind.h>
@@ -125,70 +127,96 @@ int main(int argc, char* argv[])
         break;
     }
 
-    void* old_physbase = Physbase();
-
     //////////////////////////////////////////////////////////////////////////
 
-    uint8_t ch = 0xff;
-    int page_index = 0;
-    do {
-        int prev_page_index = page_index;
+    // OS area
+    {
+        int16_t app_id = appl_init();
+        bool aes_present  = aes_global[0] != 0x0000;
 
-        if (ch == 0x4d) {   // right arrow
-            page_index++;
-            if (page_index > argc-2)
-                page_index = 0;
-        } else if (ch == 0x4b) {    // left arrow
-            page_index--;
-            if (page_index < 0)
-                page_index = argc-2;
+        if (app_id == -1 && aes_present) {
+            fprintf(stderr, "appl_init() failed.\r\n");
+            getchar();
+            return EXIT_FAILURE;
         }
 
-        if (prev_page_index == page_index && ch != 0xff)
-            continue;
-
-        // Vsync() is needed for catching up raw palette access with (V)setScreen()
-        // otherwise the new mode will reset the newly set palette
-        Vsync();
-
-        if (page[page_index].screen_info.rez != -1) {
-            Setscreen(SCR_NOCHANGE, page[page_index].screen, page[page_index].screen_info.rez);
-        } else if (page[page_index].screen_info.mode != -1) {
-            // VsetScreen(SCR_NOCHANGE, page[page_index].screen, SCR_MODECODE, page[page_index].screen_infomode);
-            // doesn't work as expected -- it not only reinitialises VT52 (useless for us)
-            // but also expects *both* logbase and physbase be of an equal size, nicely
-            // crashing if logbase is smaller. So don't bother, just use two separate calls.
-            VsetMode(page[page_index].screen_info.mode);
-            VsetScreen(SCR_NOCHANGE, page[page_index].screen, SCR_NOCHANGE, SCR_NOCHANGE);
+        if (app_id == -1) {
+            // if AES is not present, clean up but don't exit
+            appl_exit();
+        } else {
+            wind_update(BEG_UPDATE);
         }
 
-        if (page[page_index].bitmap_info.palette_type != PaletteTypeNone) {
-            int32_t ssp = Super(0L);
+        void* old_physbase = Physbase();
 
-            // Don't use Setpalette() / EsetPalette() / VsetRGB() here as we want to work
-            // we the native palette format for given machine
-            if (page[page_index].bitmap_info.palette_type == PaletteTypeSTE)
-                asm_screen_set_ste_palette(page[page_index].bitmap_info.palette.ste, 1 << page[page_index].bitmap_info.bpp);
-            else if (page[page_index].bitmap_info.palette_type == PaletteTypeTT)
-                asm_screen_set_tt_palette(page[page_index].bitmap_info.palette.tt, 1 << page[page_index].bitmap_info.bpp);
-            else if (page[page_index].bitmap_info.palette_type == PaletteTypeFalcon) {
-                asm_screen_set_falcon_palette(page[page_index].bitmap_info.palette.falcon, 1 << page[page_index].bitmap_info.bpp);
+        uint8_t ch = 0xff;
+        int page_index = 0;
+        do {
+            int prev_page_index = page_index;
+
+            if (ch == 0x4d) {   // right arrow
+                page_index++;
+                if (page_index > argc-2)
+                    page_index = 0;
+            } else if (ch == 0x4b) {    // left arrow
+                page_index--;
+                if (page_index < 0)
+                    page_index = argc-2;
             }
 
-            Super(ssp);
+            if (prev_page_index == page_index && ch != 0xff)
+                continue;
+
+            // Vsync() is needed for catching up raw palette access with (V)setScreen()
+            // otherwise the new mode will reset the newly set palette
+            Vsync();
+
+            if (page[page_index].screen_info.rez != -1) {
+                Setscreen(SCR_NOCHANGE, page[page_index].screen, page[page_index].screen_info.rez);
+            } else if (page[page_index].screen_info.mode != -1) {
+                // VsetScreen(SCR_NOCHANGE, page[page_index].screen, SCR_MODECODE, page[page_index].screen_infomode);
+                // doesn't work as expected -- it not only reinitialises VT52 (useless for us)
+                // but also expects *both* logbase and physbase be of an equal size, nicely
+                // crashing if logbase is smaller. So don't bother, just use two separate calls.
+                VsetMode(page[page_index].screen_info.mode);
+                VsetScreen(SCR_NOCHANGE, page[page_index].screen, SCR_NOCHANGE, SCR_NOCHANGE);
+            }
+
+            if (page[page_index].bitmap_info.palette_type != PaletteTypeNone) {
+                int32_t ssp = Super(0L);
+
+                // Don't use Setpalette() / EsetPalette() / VsetRGB() here as we want to work
+                // we the native palette format for given machine
+                if (page[page_index].bitmap_info.palette_type == PaletteTypeSTE)
+                    asm_screen_set_ste_palette(page[page_index].bitmap_info.palette.ste, 1 << page[page_index].bitmap_info.bpp);
+                else if (page[page_index].bitmap_info.palette_type == PaletteTypeTT)
+                    asm_screen_set_tt_palette(page[page_index].bitmap_info.palette.tt, 1 << page[page_index].bitmap_info.bpp);
+                else if (page[page_index].bitmap_info.palette_type == PaletteTypeFalcon) {
+                    asm_screen_set_falcon_palette(page[page_index].bitmap_info.palette.falcon, 1 << page[page_index].bitmap_info.bpp);
+                }
+
+                Super(ssp);
+            }
+        // loop until ESC = 0x01 is pressed
+        } while ((aes_present && (ch = ((evnt_keybd() >> 8) & 0xff)) != 0x01)
+                 || (!aes_present && (ch = ((Crawcin() >> 16) & 0xff)) != 0x01));
+
+        if (page[0].screen_info.old_rez != -1) {
+            Setscreen(SCR_NOCHANGE, old_physbase, page[0].screen_info.old_rez);
+        } else if (page[0].screen_info.old_mode != -1) {
+            // make VDI (and SuperVidel registers) happy
+            //VsetScreen(SCR_NOCHANGE, old_physbase, SCR_NOCHANGE, page[0].old_falcon_mode);
+            VsetScreen(SCR_NOCHANGE, old_physbase, SCR_NOCHANGE, SCR_NOCHANGE);
+            VsetMode(page[0].screen_info.old_mode);
         }
-    } while ((ch = ((Crawcin() >> 16) & 0xff)) != 0x01);    // ESC
+
+        if (app_id != -1) {
+            wind_update(END_UPDATE);
+            appl_exit();
+        }
+    }
 
     //////////////////////////////////////////////////////////////////////////
-
-    if (page[0].screen_info.old_rez != -1) {
-        Setscreen(SCR_NOCHANGE, old_physbase, page[0].screen_info.old_rez);
-    } else if (page[0].screen_info.old_mode != -1) {
-        // make VDI (and SuperVidel registers) happy
-        //VsetScreen(SCR_NOCHANGE, old_physbase, SCR_NOCHANGE, page[0].old_falcon_mode);
-        VsetScreen(SCR_NOCHANGE, old_physbase, SCR_NOCHANGE, SCR_NOCHANGE);
-        VsetMode(page[0].screen_info.old_mode);
-    }
 
     switch (vdo_val) {
     case VdoValueST:

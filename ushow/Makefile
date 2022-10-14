@@ -14,7 +14,7 @@ ifeq ($(LIBCMINI),yes)
 LIBCMINI_ROOT := $(shell $(CC) -print-sysroot)/opt/libcmini
 CFLAGS	:= -I$(LIBCMINI_ROOT)/include $(CFLAGS)
 LDFLAGS	:= -nostdlib $(LIBCMINI_ROOT)/lib/crt0.o $(LDFLAGS) -L$(LIBCMINI_ROOT)/lib
-LDLIBS	:= -lcmini -lgcc $(LIBS)
+LDLIBS	:= -lgem -lcmini -lgcc $(LIBS)
 endif
 
 all: $(TARGET).ttp
