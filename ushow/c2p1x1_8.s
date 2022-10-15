@@ -1,3 +1,6 @@
+; C2P by Mikael Kalms (public domain)
+; See https://github.com/Kalmalyzer/kalms-c2p
+
 	xdef	_c2p1x1_8_falcon
 
 _c2p1x1_8_falcon:

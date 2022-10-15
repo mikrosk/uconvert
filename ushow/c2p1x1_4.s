@@ -1,4 +1,7 @@
-	xdef	_c2p1x1_4_falcon
+; C2P by Mikael Kalms (public domain)
+; See https://github.com/Kalmalyzer/kalms-c2p
+
+        xdef	_c2p1x1_4_falcon
 
 _c2p1x1_4_falcon:
 	move.l	(4,sp),a0				; chunky

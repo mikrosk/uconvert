@@ -1,4 +1,21 @@
-		xdef	_asm_screen_ste_save
+; ushow: Atari ST/STE/TT/Falcon-specific bitmap viewer
+;
+; Copyright (c) 2022 Miro Kropacek <miro.kropacek@gmail.com>
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+                xdef	_asm_screen_ste_save
 		xdef	_asm_screen_tt_save
 		xdef	_asm_screen_falcon_save
 
@@ -266,6 +283,6 @@ wait_vbl:	move.w	#$25,-(sp)			; Vsync()
 
 curr_vram:	ds.l	1				; current vram
 
-save_pal:	ds.l	256+16/2			; old colours (falcon+st/e)
+save_pal:	ds.l	256+16/2			; old colours (sized for falcon+ste palette)
 
-save_video:	ds.b	32+12+2				; videl save
+save_video:	ds.b	32+12+2				; old video regs (size of falcon regs)
