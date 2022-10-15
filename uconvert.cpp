@@ -36,6 +36,7 @@ using namespace Magick;
 #include "helpers.h"
 #include "palette.h"
 #include "version.h"
+#include "uimg.h"
 
 // all values must be big endian
 static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t height)
@@ -76,7 +77,7 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
         ofs.put(height);
     }
 
-    // palette (st(e)/falcon; if present)
+    // palette (st(e)/tt/falcon; if present)
 
     // bitmap data (if present)
 }
@@ -287,15 +288,22 @@ static void copy_packed_buffer(std::vector<uint8_t>& buffer, const Image& image)
 int main(int argc, char* argv[])
 {
     std::string outputFilename;
+    bool saving_uimg;
 
     InitializeMagick(argv[0]);
     Image image;
 
     try {
         outputFilename = parse_arguments(argc, argv);
+        saving_uimg = outputFilename.substr(outputFilename.find_last_of('.')) == get_uimg_filename_ext();
 
         image.quiet(false);
-        image.read(argv[argc-1]);
+
+        if (is_chunky_uimg(argv[argc-1])) {
+            image = load_uimg(argv[argc-1]);
+        } else {
+            image.read(argv[argc-1]);
+        }
 
         if (*bitmapWidth == -1)
             bitmapWidth = image.columns();
@@ -326,80 +334,86 @@ int main(int argc, char* argv[])
                 std::cout << "Aspect ratio changed; old: " << old_ratio << ", new: " << new_ratio << std::endl;
         }
 
-        if (*bitsPerPixel && *bitsPerPixel <= 8) {
-            if (image.totalColors() > (1u << *bitsPerPixel)) {
-                std::cout << "Converting from " << image.totalColors() << " to " << (1ul << *bitsPerPixel) << " colours." << std::endl;
+        if (saving_uimg) {
+            if (*bitsPerPixel && *bitsPerPixel <= 8) {
+                const size_t totalColors = image.totalColors();
+                if (totalColors > (1u << *bitsPerPixel)) {
+                    std::cout << "Converting from " << totalColors << " to " << (1ul << *bitsPerPixel) << " colours." << std::endl;
 
-                image.quantizeDither(*dither);
-                image.quantizeColors(1u << *bitsPerPixel);
-                image.quantize();
+                    image.quantizeDither(*dither);
+                    image.quantizeColors(1u << *bitsPerPixel);
+                    image.quantize();
+                }
+
+                if (image.classType() != PseudoClass)
+                    throw std::runtime_error("Not a pseudo class.");
+
+                if (*paletteBits && image.type() != PaletteType)
+                    throw std::runtime_error("Not a palette type.");
+
+                if (*bitsPerPixel && image.colorMapSize() > (1u << *bitsPerPixel)) {
+                    throw_oss<std::runtime_error>(std::ostringstream()
+                        << "Too few bpp for " << image.colorMapSize() << " colours."
+                    );
+                }
+
+                if (image.columns() % 32 != 0)
+                    throw std::runtime_error("Width must be divisible by 32.");
             }
 
-            if (image.classType() != PseudoClass)
-                throw std::runtime_error("Not a pseudo class.");
+            std::ofstream ofs(outputFilename, std::ofstream::binary);
+            if (!ofs)
+                throw std::runtime_error("Opening destination file failed.");
 
-            if (*paletteBits && image.type() != PaletteType)
-                throw std::runtime_error("Not a palette type.");
-
-            if (*bitsPerPixel && image.colorMapSize() > (1u << *bitsPerPixel)) {
-                throw_oss<std::runtime_error>(std::ostringstream()
-                    << "Too few bpp for " << image.colorMapSize() << " colours."
-                );
+            save_header(ofs, image.columns(), image.rows());
+            if (*paletteBits) {
+                if (*stCompatiblePalette)
+                    save_palette<StePaletteEntry>(ofs, image, (1 << *bitsPerPixel));
+                else if (*ttCompatiblePalette)
+                    save_palette<TtPaletteEntry>(ofs, image, (1 << *bitsPerPixel));
+                else
+                    save_palette<FalconPaletteEntry>(ofs, image, (1 << *bitsPerPixel));
             }
 
-            if (image.columns() % 32 != 0)
-                throw std::runtime_error("Width must be divisible by 32.");
-        }
+            if (*bitsPerPixel) {
+                size_t atariImageSize = image.rows() * image.columns();
 
-        std::ofstream ofs(outputFilename, std::ofstream::binary);
-        if (!ofs)
-            throw std::runtime_error("Opening destination file failed.");
+                if (*bytesPerChunk > 0)
+                    atariImageSize *= *bytesPerChunk;
+                else
+                    atariImageSize *= *bitsPerPixel/8;  // this includes packed chunky pixels, too
 
-        save_header(ofs, image.columns(), image.rows());
-        if (*paletteBits) {
-            if (*stCompatiblePalette)
-                save_palette<StePaletteEntry>(ofs, image, (1 << *bitsPerPixel));
-            else if (*ttCompatiblePalette)
-                save_palette<TtPaletteEntry>(ofs, image, (1 << *bitsPerPixel));
-            else
-                save_palette<FalconPaletteEntry>(ofs, image, (1 << *bitsPerPixel));
-        }
+                std::vector<uint8_t> atariImage;
+                atariImage.reserve(atariImageSize);
 
-        if (*bitsPerPixel) {
-            size_t atariImageSize = image.rows() * image.columns();
+                if (!*bytesPerChunk) {
+                    c2p(atariImage, image);
+                } else if (*bytesPerChunk == 1) {
+                    copy_buffer<uint8_t>(atariImage, image);
+                } else if (*bytesPerChunk == 2) {
+                    copy_buffer<uint16_t>(atariImage, image);
+                } else if (*bytesPerChunk == 3) {
+                    copy_buffer<uint32_t>(atariImage, image);
+                } else if (*bytesPerChunk == 4) {
+                    copy_buffer<uint32_t>(atariImage, image);
+                } else if (*bytesPerChunk == -1) {
+                    // assured by args.cpp
+                    assert(*bitsPerPixel < 8);
+                    copy_packed_buffer(atariImage, image);
+                } else {
+                    throw_oss<std::invalid_argument>(std::ostringstream()
+                        << "Unexpected number of bytes per chunk: " << *bytesPerChunk
+                    );
+                }
 
-            if (*bytesPerChunk > 0)
-                atariImageSize *= *bytesPerChunk;
-            else
-                atariImageSize *= *bitsPerPixel/8;  // this includes packed chunky pixels, too
-
-            std::vector<uint8_t> atariImage;
-            atariImage.reserve(atariImageSize);
-
-            if (!*bytesPerChunk) {
-                c2p(atariImage, image);
-            } else if (*bytesPerChunk == 1) {
-                copy_buffer<uint8_t>(atariImage, image);
-            } else if (*bytesPerChunk == 2) {
-                copy_buffer<uint16_t>(atariImage, image);
-            } else if (*bytesPerChunk == 3) {
-                copy_buffer<uint32_t>(atariImage, image);
-            } else if (*bytesPerChunk == 4) {
-                copy_buffer<uint32_t>(atariImage, image);
-            } else if (*bytesPerChunk == -1) {
-                // assured by args.cpp
-                assert(*bitsPerPixel < 8);
-                copy_packed_buffer(atariImage, image);
-            } else {
-                throw_oss<std::invalid_argument>(std::ostringstream()
-                    << "Unexpected number of bytes per chunk: " << *bytesPerChunk
-                );
+                save_buffer(ofs, atariImage);
             }
 
-            save_buffer(ofs, atariImage);
+            ofs.close();
+        } else {
+            // save generic image
+            image.write(outputFilename);
         }
-
-        ofs.close();
     }
     catch(std::exception& ex)
     {
@@ -408,8 +422,12 @@ int main(int argc, char* argv[])
     }
 
     std::cout << "File " << outputFilename
-              << " (" << *bitmapWidth << "x" << *bitmapHeight << "@" << *bitsPerPixel << ") "
-              << "has been saved." << std::endl;
+              << " (" << *bitmapWidth << "x" << *bitmapHeight;
+
+    if (saving_uimg)
+        std::cout << "@" << *bitsPerPixel;
+
+    std::cout << ") has been saved." << std::endl;
 
     return EXIT_SUCCESS;
 }

@@ -36,6 +36,7 @@ extern std::optional<int16_t>   paletteBits;          // 9, 12, 18, 24 or 0 (if 
 extern std::optional<bool>      stCompatiblePalette;  // if true, use the ST/E palette registers
 extern std::optional<bool>      ttCompatiblePalette;  // if true, use the TT palette registers
 
+extern std::string get_uimg_filename_ext();
 extern std::string parse_arguments(int argc, char* argv[]);
 
 #endif // ARGS_H

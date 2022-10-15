@@ -5,7 +5,8 @@ CONFIG -= qt
 
 SOURCES += \
         args.cpp \
-        uconvert.cpp
+        uconvert.cpp \
+        uimg.cpp
 
 #QMAKE_CXXFLAGS += $$system(GraphicsMagick++-config --cppflags --cxxflags)
 QMAKE_CXXFLAGS += $$system(GraphicsMagick++-config --cppflags)
@@ -17,4 +18,8 @@ HEADERS += \
     bitfield.h \
     helpers.h \
     palette.h \
+    uimg.h \
     version.h
+
+DISTFILES += \
+    Makefile

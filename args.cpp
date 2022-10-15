@@ -70,6 +70,13 @@ std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::opti
     { "-height", { { },                           bitmapHeight  } }
 };
 
+std::unordered_map<std::string, std::optional<bool>&> allowedFlags = {
+    { "-st",     stCompatiblePalette  },
+    { "-tt",     ttCompatiblePalette  },
+    { "-filter", filter               },
+    { "-dither", dither               },
+};
+
 static void print_help(const char* name)
 {
     std::ostringstream oss;
@@ -78,20 +85,21 @@ static void print_help(const char* name)
         << "Version " << (VERSION>>8) << "." << std::setfill('0') << std::setw(2) << (VERSION&0xFFu) << " (c) 2022 Miro Kropacek <miro.kropacek@gmail.com>." << std::endl
         << std::endl
         << "Possible options:" << std::endl
-        << "  -width <num>   specify new bitmap width [default " << DEFAULT_BITMAP_WIDTH << "]" << std::endl
-        << "  -height <num>  specify new bitmap height [default " << DEFAULT_BITMAP_HEIGHT << "]" << std::endl
-        << "  -filter        use filtering when resizing [default " << std::boolalpha << DEFAULT_FILTER << "]" << std::endl
-        << "  -dither        use dithering when resizing and/or converting colours [default " << std::boolalpha << DEFAULT_DITHER << "]" << std::endl
-        << "  -bpp <num>     bits per pixel, i.e. colour depth (0, 1, 2, 4, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
-        << "  -bpc <num>     bytes per chunk (-1 for packed chunky pixels [default for bpp > 8], 0, 1, 2, 3, 4) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
-        << "  -pal <num>     number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
-        << "  -st            output palette in ST/E-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_ST_COMPATIBLE << "]" << std::endl
-        << "  -tt            output palette in TT-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_TT_COMPATIBLE << "]";
+        << "  -width <num>     specify new bitmap width [default " << DEFAULT_BITMAP_WIDTH << "]" << std::endl
+        << "  -height <num>    specify new bitmap height [default " << DEFAULT_BITMAP_HEIGHT << "]" << std::endl
+        << "  -filter          use filtering when resizing [default " << std::boolalpha << DEFAULT_FILTER << "]" << std::endl
+        << "  -dither          use dithering when resizing and/or converting colours [default " << std::boolalpha << DEFAULT_DITHER << "]" << std::endl
+        << "  -bpp <num>       bits per pixel, i.e. colour depth (0, 1, 2, 4, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
+        << "  -bpc <num>       bytes per chunk (-1 for packed chunky pixels [default for bpp > 8], 0, 1, 2, 3, 4) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
+        << "  -pal <num>       number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
+        << "  -st              output palette in ST/E-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_ST_COMPATIBLE << "]" << std::endl
+        << "  -tt              output palette in TT-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_TT_COMPATIBLE << "]" << std::endl
+        << "  -out <filename>  output bitmap as <filename> ('-bpp', '-bpc', '-pal', '-st' and '-tt' are ignored but still validated)"  << std::endl;
 
     throw std::invalid_argument(oss.str());
 }
 
-static std::string get_filename_ext()
+std::string get_uimg_filename_ext()
 {
     std::ostringstream oss;
 
@@ -193,42 +201,46 @@ std::string parse_arguments(int argc, char* argv[])
             if (*bytesPerChunk > 0 && *bitsPerPixel/8 > *bytesPerChunk)
                 throw std::invalid_argument("bpp/8 > bpc.");
 
-            outputFilename = arg.substr(0, arg.find_last_of('.')) + get_filename_ext();
+            if (outputFilename.empty())
+                outputFilename = arg.substr(0, arg.find_last_of('.')) + get_uimg_filename_ext();
             break;
         }
 
         // flags
-        if (arg == "-filter") {
-            filter = true;
-            continue;
+        {
+            auto it = allowedFlags.find(arg);
+            if (it != allowedFlags.end()) {
+                it->second = true;
+                continue;
+            }
         }
 
-        if (arg == "-dither") {
-            dither = true;
-            continue;
-        }
+        // it must be a pair
+        if (i + 1 < argc)
+            i++;
+        else
+            print_help("uconvert"/*argv[0]*/);
 
-        if (arg == "-st") {
-            stCompatiblePalette = true;
-            continue;
-        }
-
-        if (arg == "-tt") {
-            ttCompatiblePalette = true;
+        // special pair
+        if (arg == "-out") {
+            outputFilename = argv[i];
             continue;
         }
 
         // pairs
-        i++;
+        {
+            auto it = allowedValues.find(arg);
+            if (it == allowedValues.end()
+                    || (!it->second.first.empty() && it->second.first.find(std::atoi(argv[i])) == it->second.first.end()))
+                print_help("uconvert"/*argv[0]*/);
 
-        auto it = allowedValues.find(arg);
-        if (it == allowedValues.end()
-                || i == argc || i+1 == argc
-                || (!it->second.first.empty() && it->second.first.find(std::atoi(argv[i])) == it->second.first.end()))
-            print_help(argv[0]);
-
-        it->second.second = std::atoi(argv[i]);
+            it->second.second = std::atoi(argv[i]);
+            continue;
+        }
     }
+
+    if (outputFilename.empty())
+        print_help("uconvert"/*argv[0]*/);
 
     return outputFilename;
 }
