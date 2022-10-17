@@ -194,7 +194,7 @@ static void c2p(std::vector<uint8_t>& buffer, const Image& image)
             uint8_t paletteIndex = pIndexPackets[i];
 
             for (int j = 0; j < *bitsPerPixel; ++j) {
-                planes[j] |= ((paletteIndex >> j) & 0x01) << (15 - i);
+                planes[j] |= ((paletteIndex >> j) & 1) << (15 - i);
             }
         }
 
@@ -299,7 +299,7 @@ int main(int argc, char* argv[])
 
         image.quiet(false);
 
-        if (is_chunky_uimg(argv[argc-1])) {
+        if (is_uimg(argv[argc-1])) {
             image = load_uimg(argv[argc-1]);
         } else {
             image.read(argv[argc-1]);

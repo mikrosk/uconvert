@@ -34,7 +34,7 @@ typedef struct {
     int8_t      bytesPerChunk;
 } __attribute__((packed)) FileHeader;
 
-bool is_chunky_uimg(const std::string& filePath);
+bool is_uimg(const std::string& filePath);
 Magick::Image load_uimg(const std::string& filePath);
 
 #endif // UIMG_H

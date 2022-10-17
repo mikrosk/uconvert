@@ -24,11 +24,12 @@
 #include <cstring>
 #include <cstdint>
 #include <fstream>
+#include <vector>
 
 #include "helpers.h"
 #include "palette.h"
 
-bool is_chunky_uimg(const std::string& filePath)
+bool is_uimg(const std::string& filePath)
 {
     std::ifstream ifs(filePath, std::ifstream::binary);
     ifs.exceptions(std::ifstream::failbit);
@@ -41,7 +42,6 @@ bool is_chunky_uimg(const std::string& filePath)
 
     return strcmp(fileHeader.id, "UIMG") == 0
             && fileHeader.bitsPerPixel != 0
-            && (fileHeader.bytesPerChunk != 0 || fileHeader.bitsPerPixel == 1)
             && (fileHeader.bitsPerPixel > 8 || (fileHeader.flags & 0b11) != 0b00);
 }
 
@@ -65,9 +65,6 @@ Magick::Image load_uimg(const std::string& filePath)
     height |= ifs.get();
     height <<= 8;
     height |= ifs.get();
-
-    if (fileHeader.bytesPerChunk == 0 && fileHeader.bitsPerPixel == 1)
-        fileHeader.bytesPerChunk = -1;
 
     Magick::Image image({width, height}, {0, 0, 0});
 
@@ -146,6 +143,27 @@ Magick::Image load_uimg(const std::string& filePath)
     while ((fileHeader.bytesPerChunk >= 2 && pPixelPackets != pPixelPacketsEnd)
            || (fileHeader.bytesPerChunk < 2 && pIndexPackets != pIndexPacketsEnd)) {
         switch (fileHeader.bytesPerChunk) {
+        case 0: {
+            std::vector<uint16_t> planes(fileHeader.bitsPerPixel);  // 16 pixels = 16 bits x bit depth
+            for (size_t i = 0; i < planes.size(); ++i) {
+                uint16_t plane = 0;
+                plane |= ifs.get();
+                plane <<= 8;
+                plane |= ifs.get();
+                planes[i] = plane;
+            }
+
+            for (size_t i = 0; i < 16; ++i) {
+                uint8_t index = 0;
+
+                for (size_t j = 0; j < fileHeader.bitsPerPixel; ++j) {
+                    index |= ((planes[j] >> (15 - i)) & 1) << j;
+                }
+
+                *pIndexPackets++ = index;
+            }
+            break;
+        }
         case -1: {
             uint8_t chunk = ifs.get();
 
