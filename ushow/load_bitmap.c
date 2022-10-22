@@ -38,7 +38,7 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
         exit(EXIT_FAILURE);
     }
 
-    bool c2p = bitmap_info->bpc == 1 && (bitmap_info->bpp == 4 || bitmap_info->bpp == 8)
+    bool c2p = bitmap_info->bpc == 1 && (bitmap_info->bpp == 4 || bitmap_info->bpp == 6 || bitmap_info->bpp == 8)
             && (screen_info->mode & 0x07) != BPS8C;
 
     char* screen_aligned = (char*)(((uintptr_t)screen + 15) & 0xfffffff0);
@@ -46,7 +46,7 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
 
     char* c2p_buffer = NULL;
 
-    size_t screen_x_offset = 0;
+    size_t screen_x_offset_l = 0, screen_x_offset_r = 0;
     size_t final_width = screen_info->width;
     size_t seek_offset = 0;
     if (bitmap_info->width > screen_info->width) {
@@ -58,7 +58,9 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
             seek_offset *= bitmap_info->bpc;
         }
     } else {
-        screen_x_offset = (screen_info->width - bitmap_info->width) / 2; // left and right border
+        size_t center_x = (screen_info->width - bitmap_info->width) / 2;
+        screen_x_offset_l = center_x - (center_x % 16); // left border
+        screen_x_offset_r = center_x + (center_x % 16); // right border
         final_width = bitmap_info->width;
     }
 
@@ -81,12 +83,16 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
     bool file_error = false;
     char* p = screen_aligned + screen_y_offset * (screen_info->width * screen_info->bpp / 8);
     for (size_t i = 0; i < final_height; ++i) {
-        p += screen_x_offset * screen_info->bpp / 8;
+        p += screen_x_offset_l * screen_info->bpp / 8;
 
         if (!c2p) {
-            if (fread(p, sizeof(*p), final_width * screen_info->bpp / 8, f) != final_width * screen_info->bpp / 8) {
-                file_error = true;
-                break;
+            for (size_t j = 0; j < final_width; j += 16) {
+                // allow to skip unused bitplanes after each 16-pixel tuple
+                if (fread(p, sizeof(*p), 16 * bitmap_info->bpp / 8, f) != 16 * bitmap_info->bpp / 8) {
+                    file_error = true;
+                    break;
+                }
+                p += 16 * screen_info->bpp / 8;
             }
         } else {
             if (fread(c2p_buffer, sizeof(*c2p_buffer), final_width * bitmap_info->bpc, f) != final_width * bitmap_info->bpc) {
@@ -95,13 +101,16 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
             }
 
             if (bitmap_info->bpp == 4)
-                c2p1x1_4_falcon(c2p_buffer, c2p_buffer + (final_width / 8) * 8, p); // original source code had *4 there, hm...
+                c2p1x1_4_falcon(c2p_buffer, c2p_buffer + (final_width / 8) * 8, p);
+            else if (bitmap_info->bpp == 6)
+                c2p1x1_6_falcon(c2p_buffer, c2p_buffer + (final_width / 8) * 8, p);
             else if (bitmap_info->bpp == 8)
                 c2p1x1_8_falcon(c2p_buffer, c2p_buffer + (final_width / 8) * 8, p);
+
+            p += final_width * screen_info->bpp / 8;
         }
 
-        p += final_width * screen_info->bpp / 8;
-        p += screen_x_offset * screen_info->bpp / 8;
+        p += screen_x_offset_r * screen_info->bpp / 8;
 
         if (fseek(f, seek_offset, SEEK_CUR) != 0) {
             file_error = true;

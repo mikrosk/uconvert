@@ -38,13 +38,12 @@ std::optional<int16_t>  bitmapHeight;         // -1 (if original height) or any 
 std::optional<bool>     filter;               // if true, use filtering when resizing
 std::optional<bool>     dither;               // if true, use dithering when resizing and/or converting colours
 
-std::optional<int16_t>  bitsPerPixel;         // 1, 2, 4, 8 (both planar and chunky); 16, 24, 32 (chunky only) or 0 (if explicitly disabled)
+std::optional<int16_t>  bitsPerPixel;         // 1, 2, 4, 6, 8 (both planar and chunky); 16, 24, 32 (chunky only) or 0 (if explicitly disabled)
 std::optional<int16_t>  bytesPerChunk;        // -1 (if implicit/packed), 1, 2, 3, 4 or 0 (if disabled)
 std::optional<int16_t>  paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPerPixel > 8 or explicitly disabled)
 std::optional<bool>     stCompatiblePalette;  // if true, use ST/E palette registers
 std::optional<bool>     ttCompatiblePalette;  // if true, use TT palette registers
 // Possible TODOs:
-//  - 6bpp (chunky/planar)
 //  - grayscale
 //  - cat picture.gif | giftopnm | pnmquant 16 | ppmtoneo > picture.neo (call Netpbm instead of using GraphicsMagick)
 
@@ -63,11 +62,11 @@ constexpr bool        DEFAULT_ST_COMPATIBLE  = false;
 constexpr bool        DEFAULT_TT_COMPATIBLE  = false;
 
 std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::optional<int16_t>&>> allowedValues = {
-    { "-bpp",    { { 0, 1, 2, 4, 8, 16, 24, 32 }, bitsPerPixel  } },
-    { "-bpc",    { { -1, 0, 1, 2, 3, 4 },         bytesPerChunk } },
-    { "-pal",    { { 0, 9, 12, 18, 24 },          paletteBits   } },
-    { "-width",  { { },                           bitmapWidth   } },
-    { "-height", { { },                           bitmapHeight  } }
+    { "-bpp",    { { 0, 1, 2, 4, 6, 8, 16, 24, 32 }, bitsPerPixel  } },
+    { "-bpc",    { { -1, 0, 1, 2, 3, 4 },            bytesPerChunk } },
+    { "-pal",    { { 0, 9, 12, 18, 24 },             paletteBits   } },
+    { "-width",  { { },                              bitmapWidth   } },
+    { "-height", { { },                              bitmapHeight  } }
 };
 
 std::unordered_map<std::string, std::optional<bool>&> allowedFlags = {
@@ -89,7 +88,7 @@ static void print_help(const char* name)
         << "  -height <num>    specify new bitmap height [default " << DEFAULT_BITMAP_HEIGHT << "]" << std::endl
         << "  -filter          use filtering when resizing [default " << std::boolalpha << DEFAULT_FILTER << "]" << std::endl
         << "  -dither          use dithering when resizing and/or converting colours [default " << std::boolalpha << DEFAULT_DITHER << "]" << std::endl
-        << "  -bpp <num>       bits per pixel, i.e. colour depth (0, 1, 2, 4, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
+        << "  -bpp <num>       bits per pixel, i.e. colour depth (0, 1, 2, 4, 6, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
         << "  -bpc <num>       bytes per chunk (-1 for packed chunky pixels [default for bpp > 8], 0, 1, 2, 3, 4) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
         << "  -pal <num>       number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
         << "  -st              output palette in ST/E-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_ST_COMPATIBLE << "]" << std::endl
@@ -190,13 +189,16 @@ std::string parse_arguments(int argc, char* argv[])
                 throw std::invalid_argument("'-st' requires 1, 2 or 4 bits per pixel.");
 
             if (*bitsPerPixel > 8 && *ttCompatiblePalette)
-                throw std::invalid_argument("'-tt' requires 1, 2, 4 or 8 bits per pixel.");
+                throw std::invalid_argument("'-tt' requires 1, 2, 4, 6 or 8 bits per pixel.");
 
             if (*bitsPerPixel == 2 && !(*stCompatiblePalette || *ttCompatiblePalette))
                 throw std::invalid_argument("'2 bits per pixel work only with '-st' or '-tt'");
 
             if (*bytesPerChunk && !*bitsPerPixel)
                 throw std::invalid_argument("-bpc requires bpp > 0.");
+
+            if (*bytesPerChunk == -1 && *bitsPerPixel == 6)
+                throw std::invalid_argument("-bpp 6 requires bpc >= 0.");
 
             if (*bytesPerChunk > 0 && *bitsPerPixel/8 > *bytesPerChunk)
                 throw std::invalid_argument("bpp/8 > bpc.");

@@ -219,6 +219,7 @@ static void copy_buffer(std::vector<uint8_t>& buffer, const Image& image)
         case 1:
         case 2:
         case 4:
+        case 6:
         case 8: {
             chunk = *pIndexPackets++;
         } break;
@@ -357,8 +358,8 @@ int main(int argc, char* argv[])
                     );
                 }
 
-                if (image.columns() % 32 != 0)
-                    throw std::runtime_error("Width must be divisible by 32.");
+                if (image.columns() % 16 != 0)
+                    throw std::runtime_error("Width must be divisible by 16.");
             }
 
             std::ofstream ofs(outputFilename, std::ofstream::binary);
@@ -381,7 +382,7 @@ int main(int argc, char* argv[])
                 if (*bytesPerChunk > 0)
                     atariImageSize *= *bytesPerChunk;
                 else
-                    atariImageSize *= *bitsPerPixel/8;  // this includes packed chunky pixels, too
+                    atariImageSize = (atariImageSize * *bitsPerPixel) / 8;  // this includes packed chunky pixels, too
 
                 std::vector<uint8_t> atariImage;
                 atariImage.reserve(atariImageSize);
@@ -398,7 +399,7 @@ int main(int argc, char* argv[])
                     copy_buffer<uint32_t>(atariImage, image);
                 } else if (*bytesPerChunk == -1) {
                     // assured by args.cpp
-                    assert(*bitsPerPixel < 8);
+                    assert(*bitsPerPixel < 8 && *bitsPerPixel != 6);
                     copy_packed_buffer(atariImage, image);
                 } else {
                     throw_oss<std::invalid_argument>(std::ostringstream()

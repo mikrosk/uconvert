@@ -93,6 +93,7 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
                 screen_info.rez    = bitmap_info->palette_type == PaletteTypeSTE ? RezValueSTLow : RezValueTTMid;
             }
             break;
+        case 6:
         case 8:
             if (!mono_monitor && (bitmap_info->bpc == 0 || bitmap_info->bpc == 1)) {
                 screen_info.width  = 320;
@@ -134,6 +135,7 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
                 screen_info.mode   = BPS4;
             }
             break;
+        case 6:
         case 8:
             if (!mono_monitor && (bitmap_info->bpc == 0 || bitmap_info->bpc == 1)) {
                 screen_info.width  = 320;

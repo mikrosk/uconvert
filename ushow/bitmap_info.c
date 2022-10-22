@@ -71,7 +71,7 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val)
         exit(EXIT_FAILURE);
     }
 
-    if (bitmap_info.bpc == 1 && bitmap_info.bpp != 4 && bitmap_info.bpp != 8) {
+    if (bitmap_info.bpc == 1 && bitmap_info.bpp != 4 && bitmap_info.bpp != 6 && bitmap_info.bpp != 8) {
         fprintf(stdout, "Unsupported C2P configuration (bpp: %d, bpc: %d).\r\n", bitmap_info.bpp, bitmap_info.bpc);
         getchar();
         exit(EXIT_FAILURE);
