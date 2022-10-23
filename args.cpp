@@ -168,11 +168,15 @@ std::string parse_arguments(int argc, char* argv[])
                 bytesPerChunk = *bitsPerPixel / 8;
             }
 
-            if (!paletteBits.has_value() && *bitsPerPixel <= 8) {   // either not set or less than 8bpp
-                if (*stCompatiblePalette || *ttCompatiblePalette)
-                    paletteBits = DEFAULT_ST_TT_PALETTE_BITS;
-                else
-                    paletteBits = DEFAULT_PALETTE_BITS;
+            if (!paletteBits.has_value()) {
+                if (*bitsPerPixel <= 8) {
+                    if (*stCompatiblePalette || *ttCompatiblePalette)
+                        paletteBits = DEFAULT_ST_TT_PALETTE_BITS;
+                    else
+                        paletteBits = DEFAULT_PALETTE_BITS;
+                } else {
+                    paletteBits = 0;
+                }
             }
 
             // do some sanity checks
