@@ -15,7 +15,7 @@
 ; You should have received a copy of the GNU General Public License
 ; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-                xdef	_asm_screen_ste_save
+		xdef	_asm_screen_ste_save
 		xdef	_asm_screen_tt_save
 		xdef	_asm_screen_falcon_save
 
@@ -39,7 +39,7 @@ _asm_screen_ste_save:
 		bsr	wait_vbl			; avoid flickering
 
 		lea	$ffff8240.w,a0
-		lea     save_pal,a1
+		lea	save_pal,a1
 		moveq	#16/2-1,d0
 
 .loop:		move.l	(a0)+,(a1)+
@@ -48,7 +48,7 @@ _asm_screen_ste_save:
 		lea	save_video,a1
 		move.l	$ffff8200.w,(a1)+		; vidhm
 		move.w	$ffff820c.w,(a1)+		; vidl
-		move.w  $ffff8260.w,(a1)+		; st shifter
+		move.w	$ffff8260.w,(a1)+		; st shifter
 		rts
 
 ; extern void asm_screen_tt_save(void);
@@ -57,7 +57,7 @@ _asm_screen_tt_save:
 		bsr	wait_vbl			; avoid flickering
 
 		lea	$ffff8400.w,a0
-		lea     save_pal,a1
+		lea	save_pal,a1
 		moveq	#256/2-1,d0
 
 .loop:		move.l	(a0)+,(a1)+
@@ -66,7 +66,7 @@ _asm_screen_tt_save:
 		lea	save_video,a1
 		move.l	$ffff8200.w,(a1)+		; vidhm
 		move.w	$ffff820c.w,(a1)+		; vidl
-		move.w  $ffff8262.w,(a1)+		; tt shifter
+		move.w	$ffff8262.w,(a1)+		; tt shifter
 		rts
 
 ; extern void asm_screen_falcon_save(void);
@@ -124,9 +124,9 @@ _asm_screen_ste_restore:
 		lea	save_video,a1
 		move.l	(a1)+,$ffff8200.w		; vidhm
 		move.w	(a1)+,$ffff820c.w		; vidl
-		move.w  (a1)+,$ffff8260.w		; st shifter
+		move.w	(a1)+,$ffff8260.w		; st shifter
 
-		lea     save_pal,a0
+		lea	save_pal,a0
 		lea	$ffff8240.w,a1
 		moveq	#16/2-1,d0
 
@@ -142,9 +142,9 @@ _asm_screen_tt_restore:
 		lea	save_video,a1
 		move.l	(a1)+,$ffff8200.w		; vidhm
 		move.w	(a1)+,$ffff820c.w		; vidl
-		move.w  (a1)+,$ffff8262.w		; tt shifter
+		move.w	(a1)+,$ffff8262.w		; tt shifter
 
-		lea     save_pal,a0
+		lea	save_pal,a0
 		lea	$ffff8400.w,a1
 		moveq	#256/2-1,d0
 
@@ -180,12 +180,12 @@ _asm_screen_falcon_restore:
 
 		move.b	(a0)+,$ffff8265.w		; p_o
 
-		tst.b	(a0)+   			; st(e) compatible mode?
+		tst.b	(a0)+				; st(e) compatible mode?
 		bne	.st_comp			; yes
 
 .falcon:	move.l	a0,-(sp)
 		bsr	wait_vbl			; Patch to avoid
-		clr.w   $ffff8266.w			; monochrome sync errors
+		clr.w	$ffff8266.w			; monochrome sync errors
 		bsr	wait_vbl			; (ripped from
 		movea.l	(sp)+,a0			; FreeMiNT kernel,
 		move.w	(a0),$ffff8266.w		; by Draco/Yescrew)
@@ -193,7 +193,7 @@ _asm_screen_falcon_restore:
 		bra	.restored
 
 .st_comp:	move.w	(a0)+,$ffff8266.w		; falcon-shift
-		move.w  (a0),$ffff8260.w		; st-shift
+		move.w	(a0),$ffff8260.w		; st-shift
 		lea	save_video,a0
 		move.w	32(a0),$ffff82c2.w		; c_s
 		move.l	34(a0),$ffff820e.w		; offset+width

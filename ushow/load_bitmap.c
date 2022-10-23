@@ -86,13 +86,15 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
         p += screen_x_offset_l * screen_info->bpp / 8;
 
         if (!c2p) {
-            for (size_t j = 0; j < final_width; j += 16) {
-                // allow to skip unused bitplanes after each 16-pixel tuple
-                if (fread(p, sizeof(*p), 16 * bitmap_info->bpp / 8, f) != 16 * bitmap_info->bpp / 8) {
+            // allow to skip unused bitplanes after each 16-pixel tuple
+            const size_t pixels_at_once = (screen_info->bpp != bitmap_info->bpp) ? 16 : final_width;
+
+            for (size_t j = 0; j < final_width; j += pixels_at_once) {
+                if (fread(p, sizeof(*p), pixels_at_once * bitmap_info->bpp / 8, f) != pixels_at_once * bitmap_info->bpp / 8) {
                     file_error = true;
                     break;
                 }
-                p += 16 * screen_info->bpp / 8;
+                p += pixels_at_once * screen_info->bpp / 8;
             }
         } else {
             if (fread(c2p_buffer, sizeof(*c2p_buffer), final_width * bitmap_info->bpc, f) != final_width * bitmap_info->bpc) {

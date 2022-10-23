@@ -141,7 +141,7 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
                 screen_info.width  = 320;
                 screen_info.height = VgetMonitor() != MON_VGA ? 200 : 240;
                 screen_info.bpp    = 8;
-                screen_info.mode   = bitmap_info->bpc == 1 && supervidel ? BPS8C : BPS8;
+                screen_info.mode   = bitmap_info->bpc == 1 && bitmap_info->bpp == 8 && supervidel ? BPS8C : BPS8;
             }
             break;
         case 16:
