@@ -50,3 +50,9 @@ The algorithm goes like this for Falcon-only resolutions:
 8. Or if SuperVidel is present, try one-by-one its system resolutions, regardless of bit depth: 640x480, 800x600, 1024x768, 1280x720, 1280x1024, 1680x1050, 1600x1200, 1920x1080.
 
 It's not ideal but I for now I'm happy with its current state. Also, as you can see, uShow is a nice showcase of how to set various Falcon resolutions, esp. on SuperVidel.
+
+## Known bugs
+
+- When setting ST High on TT and Falcon, writes into ST palette are ignored. On Falcon, palette registers $ffff9800 and $ffff9804 seems to be used instead.
+
+- When having SuperVidel isntalled, in certain situations uShow doesn't return to proper desktop resolution: https://www.atari-forum.com/viewtopic.php?p=439510#p439510
