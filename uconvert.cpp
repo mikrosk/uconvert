@@ -42,7 +42,7 @@ using namespace Magick;
 static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t height)
 {
     // ID
-    ofs.write("UIMG\0", 5);
+    ofs.write("UIMG", 4);
     ofs.put(VERSION >> 8);
     ofs.put(VERSION & 0xff);
     // flags: bit 15-8 7 6 5 4 3 2 1 0

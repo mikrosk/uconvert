@@ -36,7 +36,7 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val)
         exit(EXIT_FAILURE);
     }
 
-    if (strcmp(file_header.id, "UIMG") != 0) {
+    if (strncmp(file_header.id, "UIMG", 4) != 0) {
         fprintf(stderr, "Invalid header: '%s'.\r\n", file_header.id);
         getchar();
         exit(EXIT_FAILURE);

@@ -24,7 +24,7 @@
 #include <stdint.h>
 
 typedef struct {
-    char        id[5];
+    char        id[4];
     uint16_t    version;
     uint16_t    flags;
     uint8_t     bitsPerPixel;

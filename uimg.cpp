@@ -40,7 +40,7 @@ bool is_uimg(const std::string& filePath)
     fileHeader.version = (fileHeader.version >> 8) | (fileHeader.version << 8);
     fileHeader.flags   = (fileHeader.flags >> 8)   | (fileHeader.flags << 8);
 
-    return strcmp(fileHeader.id, "UIMG") == 0
+    return strncmp(fileHeader.id, "UIMG", 4) == 0
             && fileHeader.bitsPerPixel != 0
             && (fileHeader.bitsPerPixel > 8 || (fileHeader.flags & 0b11) != 0b00);
 }
