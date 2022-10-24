@@ -24,6 +24,13 @@ So I told myself: ok, let's create a _really nice_ tool which will feature all t
 
 After some research, I came up with [GraphicsMagick](http://www.graphicsmagick.org) (a fork of well-known [ImageMagick](https://imagemagick.org)). There's a plenty of documentation (for both projects which are interchangeable) and a simple (but definitely not very elegant) [C++ API](http://www.graphicsmagick.org/Magick++/index.html).
 
+Please note that this is mostly a converter (it has it in its name!), so if you are looking for a tool to get best possible visual results, try some of the more specialised tools:
+- Zerkman's [MPP](https://zerkman.sector1.fr/index.php?post/2013/12/10/MPP-version-1.1)
+- dml's [PhotoChrome](http://www.leonik.net/dml/sec_pcs.py) and [CryptoChrome](http://www.leonik.net/dml/sec_crypto.py) ([AF thread](https://www.atari-forum.com/viewtopic.php?t=24166), [Bitbucket repository](https://bitbucket.org/d_m_l/agtools/wiki/CryptoChrome))
+- Anima's [Image Color Remapping Tool](http://tool.anides.de/remap.html) ([AF thread](https://www.atari-forum.com/viewtopic.php?t=42128)), [Experimental Atari STE image enhancement website](http://atari.anides.de) ([AF thread](https://www.atari-forum.com/viewtopic.php?t=26462) and [AF post](https://www.atari-forum.com/viewtopic.php?p=250595#p250595)), [Retro Image Tool](http://tool.anides.de) ([AF thread](https://www.atari-forum.com/viewtopic.php?t=27556), [AF thread](https://www.atari-forum.com/viewtopic.php?t=29370), [AF thread](https://www.atari-forum.com/viewtopic.php?t=29314)) and [Image converter for the Atari Falcon high colour mode](http://tc.anides.de)
+- cyg's [ST hicolor video encoder & player](https://www.pouet.net/prod.php?which=63527)
+- ppera's [page about movie playback](https://atari.8bitchip.info/movpst.php)
+
 ## Building
 
 uConvert is distributed in source form only, sorry. For Linux and Mac users that perhaps makes sense (it's a command line tool after all) but for possible Windows users I'd recommend installing either a Virtual Machine + Ubuntu or even better, Microsoft's very own [WSL](https://learn.microsoft.com/en-us/windows/wsl). In theory it is possible to build uConvert as a native Windows binary but that requires some non-trivial fun with [GraphicsMagick's Windows installation](http://www.graphicsmagick.org/INSTALL-windows.html). Patches are welcome. :)
@@ -149,3 +156,5 @@ For example of UIMG handling, see [ushow](https://github.com/mikrosk/uconvert/tr
 
 ```
 Save as a Falcon 4bpp bitplane bitmap: `uconvert -bpp 4 img.c04`
+
+By the way, if you are looking for an easy way how to create gradients for the Atari, see [Gradient Blaster](https://github.com/grahambates/gradient-blaster). It supports all ST/STE/TT/Falcon/SuperVidel colour formats and exports to a directly usable output.

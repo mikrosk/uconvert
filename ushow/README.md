@@ -55,4 +55,4 @@ It's not ideal but I for now I'm happy with its current state. Also, as you can 
 
 - When setting ST High on TT and Falcon, writes into ST palette are ignored. On Falcon, palette registers $ffff9800 and $ffff9804 seems to be used instead.
 
-- When having SuperVidel isntalled, in certain situations uShow doesn't return to proper desktop resolution: https://www.atari-forum.com/viewtopic.php?p=439510#p439510
+- When having SuperVidel installed, in certain situations uShow doesn't return to proper desktop resolution: https://www.atari-forum.com/viewtopic.php?p=439510#p439510
