@@ -23,6 +23,6 @@
 
 #include <stdint.h>
 
-constexpr uint16_t VERSION = 0x0100;
+constexpr uint16_t VERSION = 0x0101;
 
 #endif // VERSION_H
