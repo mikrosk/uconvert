@@ -9,7 +9,7 @@ When it comes to helper utilities, coders are usually not very keen to release t
 - is it Falcon bitplane graphics? => convert it into GIF, load in Pixart, save as .PIX
 - is it Falcon hicolour graphics? => convert it into TGA (first find a tool which still outputs uncompressed TGA...), load in EscPaint, save as .TRP
 
-And yes, every time I had to modify the source graphics, I went through this again and again. IIRC at one point I did code a TGA -> TRP converter but that was it. But the older we get, the less time we have for such perks... I tried to find something to ease my pain but (un)surprisingly except the ST-oriented [PNGconv](https://github.com/troed/PNGconv) by Troed there was virtually nothing.
+And yes, every time I had to modify the source graphics, I went through this again and again. IIRC at one point I did code a TGA -> TRP converter but that was it. But the older we get, the less time we have for such perks... I tried to find something to ease my pain but (un)surprisingly except the ST-oriented [PNGconv](https://github.com/troed/PNGconv) by Troed and [MI-3](https://www.mirari.fr/file/browse?f=913&u=506) by Rockyone ([AF thread](https://www.atari-forum.com/viewtopic.php?t=28191)) there was virtually nothing.
 
 So I told myself: ok, let's create a _really nice_ tool which will feature all the things I've been missing so much over the years! Namely:
 - store arbitrary sizes, not only screen sizes (applies mainly to ST graphics)
