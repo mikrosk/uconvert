@@ -30,6 +30,7 @@ Please note that this is mostly a converter (it has it in its name!), so if you 
 - Anima's [Image Color Remapping Tool](http://tool.anides.de/remap.html) ([AF thread](https://www.atari-forum.com/viewtopic.php?t=42128)), [Experimental Atari STE image enhancement website](http://atari.anides.de) ([AF thread](https://www.atari-forum.com/viewtopic.php?t=26462) and [AF post](https://www.atari-forum.com/viewtopic.php?p=250595#p250595)), [Retro Image Tool](http://tool.anides.de) ([AF thread](https://www.atari-forum.com/viewtopic.php?t=27556), [AF thread](https://www.atari-forum.com/viewtopic.php?t=29370), [AF thread](https://www.atari-forum.com/viewtopic.php?t=29314)) and [Image converter for the Atari Falcon high colour mode](http://tc.anides.de)
 - cyg's [ST hicolor video encoder & player](https://www.pouet.net/prod.php?which=63527)
 - ppera's [page about movie playback](https://atari.8bitchip.info/movpst.php)
+-  DecAns's [DaDither image converter](https://www.dadither.com)
 
 ## Building
 
