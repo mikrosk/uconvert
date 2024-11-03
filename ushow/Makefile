@@ -2,7 +2,7 @@ TARGET	:= ushow
 
 LIBCMINI ?= yes
 
-AS	:= vasm
+AS	:= vasmm68k_mot
 CC	:= m68k-atari-mint-gcc
 
 ASFLAGS	:= -quiet -Faout -opt-allbra
@@ -15,7 +15,7 @@ ifeq ($(LIBCMINI),yes)
 LIBCMINI_ROOT := $(shell $(CC) -print-sysroot)/opt/libcmini
 CFLAGS	:= -I$(LIBCMINI_ROOT)/include $(CFLAGS)
 LDFLAGS	:= -nostdlib $(LIBCMINI_ROOT)/lib/crt0.o $(LDFLAGS) -L$(LIBCMINI_ROOT)/lib
-LDLIBS	:= -lcmini -lgcc $(LDLIBS)
+LDLIBS	:= -lgcc -lcmini -lgcc $(LDLIBS)
 endif
 
 all: $(TARGET).ttp

@@ -186,7 +186,7 @@ int main(int argc, char* argv[])
                 int32_t ssp = Super(0L);
 
                 // Don't use Setpalette() / EsetPalette() / VsetRGB() here as we want to work
-                // we the native palette format for given machine
+                // with the native palette format for given machine
                 if (page[page_index].bitmap_info.palette_type == PaletteTypeSTE)
                     asm_screen_set_ste_palette(page[page_index].bitmap_info.palette.ste, 1 << page[page_index].bitmap_info.bpp);
                 else if (page[page_index].bitmap_info.palette_type == PaletteTypeTT)
