@@ -209,6 +209,9 @@ std::string parse_arguments(int argc, char* argv[])
 
             if (outputFilename.empty())
                 outputFilename = arg.substr(0, arg.find_last_of('.')) + get_uimg_filename_ext();
+
+            if (outputFilename.find('.') == std::string::npos)
+                outputFilename += get_uimg_filename_ext();
             break;
         }
 
@@ -222,7 +225,7 @@ std::string parse_arguments(int argc, char* argv[])
         }
 
         // it must be a pair
-        if (i + 1 < argc)
+        if (i + 1 < argc-1)
             i++;
         else
             print_help("uconvert"/*argv[0]*/);

@@ -348,8 +348,8 @@ int main(int argc, char* argv[])
                 if (image.classType() != PseudoClass)
                     throw std::runtime_error("Not a pseudo class.");
 
-                if (*paletteBits && image.type() != PaletteType)
-                    throw std::runtime_error("Not a palette type.");
+                //if (*paletteBits && image.type() != PaletteType)
+                //    throw std::runtime_error("Not a palette type.");
 
                 if (*bitsPerPixel && image.colorMapSize() > (1u << *bitsPerPixel)) {
                     throw_oss<std::runtime_error>(std::ostringstream()
