@@ -201,14 +201,16 @@ std::string parse_arguments(int argc, char* argv[])
             if (*bytesPerChunk && !*bitsPerPixel)
                 throw std::invalid_argument("-bpc requires bpp > 0.");
 
-            if (!*bytesPerChunk && *bitsPerPixel > 8)
-                throw std::invalid_argument("-bpp > 8 requires bpc > 0.");
+            if (*bitsPerPixel <= 8 && *bytesPerChunk > 1)
+                throw std::invalid_argument("-bpp <= 8 requires bpc <= 1.");
+
+            // a 24-bit pixel may be padded to a longword for faster access
+            if (*bitsPerPixel > 8 && *bytesPerChunk != *bitsPerPixel/8
+                    && !(*bitsPerPixel == 24 && *bytesPerChunk == 4))
+                throw std::invalid_argument("-bpp > 8 requires bpc = bpp/8 (bpp 24 also allows 4).");
 
             if (*bytesPerChunk == -1 && *bitsPerPixel == 6)
                 throw std::invalid_argument("-bpp 6 requires bpc >= 0.");
-
-            if (*bytesPerChunk > 0 && *bitsPerPixel/8 > *bytesPerChunk)
-                throw std::invalid_argument("bpp/8 > bpc.");
 
             if (outputFilename.empty())
                 outputFilename = arg.substr(0, arg.find_last_of('.')) + get_uimg_filename_ext();
