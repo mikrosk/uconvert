@@ -335,36 +335,26 @@ int main(int argc, char* argv[])
 
         if (saving_uimg) {
             if (*bitsPerPixel && *bitsPerPixel <= 8) {
-                size_t totalColors = image.totalColors();
-                if (totalColors > (1u << *bitsPerPixel)) {
-                    std::cout << "Converting from " << totalColors << " to " << (1ul << *bitsPerPixel) << " colours." << std::endl;
+                if (image.classType() != PseudoClass || image.colorMapSize() > (1u << *bitsPerPixel)) {
+                    const size_t colors = image.classType() == PseudoClass
+                            ? image.colorMapSize()
+                            : image.totalColors();
+
+                    std::cout << "Converting from " << colors << " to " << (1ul << *bitsPerPixel) << " colours." << std::endl;
 
                     image.quantizeDither(*dither);
                     image.quantizeColors(1u << *bitsPerPixel);
                     image.quantize();
-
-                    totalColors = image.totalColors();
                 }
 
                 if (image.classType() != PseudoClass)
                     throw std::runtime_error("Not a pseudo class.");
 
                 if (image.colorMapSize() > (1u << *bitsPerPixel)) {
-                	std::cerr << "Warning, adjusting colorMapSize from " << image.colorMapSize()
-                		<< " to " <<  (1u << *bitsPerPixel) 
-                		<< " (totalColors: " << totalColors << ")" 
-                		<< std::endl;
-                	image.colorMapSize(1u << *bitsPerPixel);
+                    throw_oss<std::runtime_error>(std::ostringstream()
+                        << "Too few bpp for " << image.colorMapSize() << " colours."
+                    );
                 }
-
-                //if (*paletteBits && image.type() != PaletteType)
-                //    throw std::runtime_error("Not a palette type.");
-
-                //if (*bitsPerPixel && image.colorMapSize() > (1u << *bitsPerPixel)) {
-                //    throw_oss<std::runtime_error>(std::ostringstream()
-                //        << "Too few bpp for " << image.colorMapSize() << " colours."
-                //    );
-                //}
 
                 if (image.columns() % 16 != 0)
                     throw std::runtime_error("Width must be divisible by 16.");
