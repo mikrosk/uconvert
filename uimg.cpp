@@ -208,6 +208,15 @@ Magick::Image load_uimg(const std::string& filePath)
         }
     }
 
+    // prepare pixel packets for possible palette -> chunky conversion
+    if (fileHeader.bitsPerPixel <= 8) {
+        Magick::PixelPacket* pPixels = image.getPixels(0, 0, image.columns(), image.rows());
+        const Magick::IndexPacket* pIndexes = image.getIndexes();
+
+        for (size_t i = 0; i < image.columns() * image.rows(); ++i)
+            pPixels[i] = image.colorMap(pIndexes[i]);
+    }
+
     image.syncPixels();
 
     return image;
