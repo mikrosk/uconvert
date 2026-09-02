@@ -93,7 +93,7 @@ static void print_help(const char* name)
         << "  -pal <num>       number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
         << "  -st              output palette in ST/E-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_ST_COMPATIBLE << "]" << std::endl
         << "  -tt              output palette in TT-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_TT_COMPATIBLE << "]" << std::endl
-        << "  -out <filename>  output bitmap as <filename> ('-bpp', '-bpc', '-pal', '-st' and '-tt' are ignored but still validated)"  << std::endl;
+        << "  -out <filename>  output bitmap as <filename> (the format is taken from its extension)"  << std::endl;
 
     throw std::invalid_argument(oss.str());
 }
@@ -196,7 +196,7 @@ std::string parse_arguments(int argc, char* argv[])
                 throw std::invalid_argument("'-tt' requires 1, 2, 4, 6 or 8 bits per pixel.");
 
             if (*bitsPerPixel == 2 && !(*stCompatiblePalette || *ttCompatiblePalette))
-                throw std::invalid_argument("'2 bits per pixel work only with '-st' or '-tt'");
+                throw std::invalid_argument("2 bits per pixel work only with '-st' or '-tt'.");
 
             if (*bytesPerChunk && !*bitsPerPixel)
                 throw std::invalid_argument("-bpc requires bpp > 0.");

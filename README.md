@@ -74,10 +74,10 @@ Number of bits for each palette entry. Palette generation can be disabled using 
 Store 9- and 12-bit palette in 16-bit ST/E palette format (`0000 rRRR gGGG bBBB`).
 
 ### `-tt`
-Store 9- and 12-bit palette in 16-bit TT palette format (`0000 RRRR GGGG GBBB`).
+Store 9- and 12-bit palette in 16-bit TT palette format (`0000 RRRR GGGG BBBB`).
 
 ### `-out <filename.ext>`
-Export source bitmap as an image in the format specified by `<ext>`. This includes all popular formats like GIF, JPEG, PNG, WEBP, ... [whatever GraphicsMagick supports](http://www.graphicsmagick.org/formats.html). Atari switches are ignored (but still validated), only resizing/dithering is applied. Useful for reading uConvert's native Atari formats and displaying on the host platform but usable as a generic bitmap converter, too.
+Export source bitmap as `<filename.ext>`. If `<ext>` is the one the Atari switches would produce anyway, an Atari bitmap is written, otherwise the format is taken from `<ext>` - all popular formats like GIF, JPEG, PNG, WEBP, ... [whatever GraphicsMagick supports](http://www.graphicsmagick.org/formats.html); Atari switches are then ignored (but still validated) and only resizing/dithering is applied. Useful for reading uConvert's native Atari formats and displaying on the host platform but usable as a generic bitmap converter, too.
 
 ## UIMG Bitmap format
 
