@@ -249,14 +249,10 @@ static void copy_buffer(std::vector<uint8_t>& buffer, const Image& image)
             );
         }
 
-        int shift = (sizeof(T) - 1) * 8;    // go from MSB to LSB
-        while (shift >= 0) {
-            // quick hack to skip opacity
-            if (*bitsPerPixel != 24 || shift != (sizeof(T) - 1) * 8) {
-                buffer.push_back(chunk >> shift);
-            }
-            shift -= 8;
-        };
+        // go from MSB to LSB, dropping the bytes which don't fit the chunk
+        // (i.e. the opacity of a 24-bit pixel stored in three bytes)
+        for (int shift = (*bytesPerChunk - 1) * 8; shift >= 0; shift -= 8)
+            buffer.push_back(chunk >> shift);
     }
 }
 
