@@ -131,7 +131,7 @@ Magick::Image load_uimg(const std::string& filePath)
         }
     } else {
         image.classType(Magick::DirectClass);
-        image.type(Magick::TrueColorType);
+        image.type(fileHeader.bitsPerPixel == 32 ? Magick::TrueColorMatteType : Magick::TrueColorType);
     }
 
     Magick::PixelPacket*       pPixelPackets = image.getPixels(0, 0, image.columns(), image.rows());
@@ -190,8 +190,13 @@ Magick::Image load_uimg(const std::string& filePath)
             pPixelPackets++;
             break;
         }
-        case 4:
-            pPixelPackets->opacity = ifs.get();
+        case 4: {
+            // a 24-bit pixel is only padded to a longword, that byte is not an alpha
+            const int alpha = ifs.get();
+            pPixelPackets->opacity = fileHeader.bitsPerPixel == 32
+                    ? MaxRGB - (alpha << (QuantumDepth - 8))
+                    : OpaqueOpacity;
+        }
             [[fallthrough]];
         case 3:
             pPixelPackets->red   = ifs.get() << (QuantumDepth - 8);

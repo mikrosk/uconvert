@@ -236,11 +236,13 @@ static void copy_buffer(std::vector<uint8_t>& buffer, const Image& image)
         case 32: {
             constexpr size_t shift = QuantumDepth - 8;
 
-            const uint8_t a = pPixelPackets->opacity >> shift;
+            // GraphicsMagick stores transparency, the file wants opacity;
+            // a 24-bit pixel has no alpha, its fourth byte is only padding
+            const uint8_t a = *bitsPerPixel == 32 ? (MaxRGB - pPixelPackets->opacity) >> shift : 0xff;
             const uint8_t r = pPixelPackets->red     >> shift;
             const uint8_t g = pPixelPackets->green   >> shift;
             const uint8_t b = pPixelPackets->blue    >> shift;
-            chunk = (a << 24) | (r << 16) | (g << 8) | b;    // ARGB
+            chunk = ((uint32_t)a << 24) | (r << 16) | (g << 8) | b;    // ARGB
         } break;
 
         default:
