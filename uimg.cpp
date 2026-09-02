@@ -32,10 +32,10 @@
 bool is_uimg(const std::string& filePath)
 {
     std::ifstream ifs(filePath, std::ifstream::binary);
-    ifs.exceptions(std::ifstream::failbit);
 
     FileHeader fileHeader;
-    ifs.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader));
+    if (!ifs.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader)))
+        return false;   // missing or too short to be one of ours; let GraphicsMagick complain
 
     fileHeader.version = (fileHeader.version >> 8) | (fileHeader.version << 8);
     fileHeader.flags   = (fileHeader.flags >> 8)   | (fileHeader.flags << 8);
