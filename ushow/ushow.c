@@ -40,6 +40,16 @@ static struct {
     char*      path;        // kept for the bitmaps we draw only when they are shown
 } page[256];
 
+static char error[256];
+
+static void print_error(const char* text)
+{
+    fprintf(stderr, "%s\r\n", text);
+    fprintf(stderr, "Press enter to exit.\r\n");
+    getchar();
+    exit(EXIT_FAILURE);
+}
+
 static void print_help()
 {
     fprintf(stderr, "Usage: ushow.ttp <filename.ext> [<filename.ext>]...\r\n");
@@ -78,22 +88,16 @@ int main(int argc, char* argv[])
     Getcookie(C__VDO, &vdo_val);
     vdo_val >>= 16;	// interested in the upper word only
 
-    if (vdo_val < VdoValueST || vdo_val > VdoValueFalcon) {
-        fprintf(stderr, "Not an Atari compatible video.\r\n");
-        getchar();
-        return EXIT_FAILURE;
-    }
+    if (vdo_val < VdoValueST || vdo_val > VdoValueFalcon)
+        print_error("Not an Atari compatible video.");
 
     // GEM first: get_screen_info() needs the size of the screen the VDI is using
     // to tell whether a VDI palette bitmap fits it
     int16_t app_id = appl_init();
     bool aes_present = aes_global[0] != 0x0000;
 
-    if (app_id == -1 && aes_present) {
-        fprintf(stderr, "appl_init() failed.\r\n");
-        getchar();
-        return EXIT_FAILURE;
-    }
+    if (app_id == -1 && aes_present)
+        print_error("appl_init() failed.");
 
     int16_t vdi_handle = 0;
     size_t vdi_width = 0, vdi_height = 0, vdi_bpp = 0;
@@ -125,19 +129,21 @@ int main(int argc, char* argv[])
     }
 
     bool vdi_pages = false, other_pages = false;
-    int exit_code = EXIT_SUCCESS;
 
     for (int i = 0; i < argc-1; ++i) {
         FILE* f = fopen(argv[i+1], "rb");
         if (!f) {
-            fprintf(stderr, "Failed to open '%s'.\r\n", argv[i+1]);
-            getchar();
-            return EXIT_FAILURE;
+            snprintf(error, sizeof(error), "Failed to open '%s'.", argv[i+1]);
+            break;
         }
 
         printf("Processing '%s' ...\r\n", argv[i+1]);
 
-        page[i].bitmap_info = load_bitmap_info(f, vdo_val);
+        page[i].bitmap_info = load_bitmap_info(f, vdo_val, error);
+        if (error[0]) {
+            fclose(f);
+            break;
+        }
 
         if (page[i].bitmap_info.palette_type == PaletteTypeVDI)
             vdi_pages = true;
@@ -145,16 +151,14 @@ int main(int argc, char* argv[])
             other_pages = true;
 
         // one draws on the desktop's screen, the others take it over
-        if (vdi_pages && other_pages) {
-            fprintf(stderr, "Can't mix VDI palette bitmaps with the rest.\r\n");
-            getchar();
-            return EXIT_FAILURE;
-        }
+        if (vdi_pages && other_pages)
+            sprintf(error, "Can't mix VDI palette bitmaps with the rest.");
+        else if (page[i].bitmap_info.width == 0 || page[i].bitmap_info.height == 0)
+            sprintf(error, "No bitmap data - nothing to show.");
 
-        if (page[i].bitmap_info.width == 0 || page[i].bitmap_info.height == 0) {
-            fprintf(stdout, "No bitmap data - nothing to show.\r\n");
-            getchar();
-            return EXIT_SUCCESS;
+        if (error[0]) {
+            fclose(f);
+            break;
         }
 
         if (page[i].bitmap_info.palette_type == PaletteTypeVDI)
@@ -164,10 +168,6 @@ int main(int argc, char* argv[])
 
         if (!page[i].screen_info.keep_screen
                 && page[i].screen_info.rez == -1 && page[i].screen_info.mode == -1) {
-            fprintf(stderr, "Unable to display: %dx%d@%dbpp (%s).\r\n",
-                    page[i].bitmap_info.width, page[i].bitmap_info.height, page[i].bitmap_info.bpp,
-                    page[i].bitmap_info.bpc == 0 ? "planar": "chunky");
-
             char* pal_str = "Unknown (?)";
             switch (page[i].bitmap_info.palette_type) {
             case PaletteTypeNone:
@@ -186,20 +186,27 @@ int main(int argc, char* argv[])
                 pal_str = "VDI";
                 break;
             }
-            fprintf(stderr, "Palette: %s.\r\n", pal_str);
-
-            getchar();
-            return EXIT_FAILURE;
+            snprintf(error, sizeof(error), "Unable to display: %dx%d@%dbpp (%s), palette: %s.",
+                     page[i].bitmap_info.width, page[i].bitmap_info.height, page[i].bitmap_info.bpp,
+                     page[i].bitmap_info.bpc == 0 ? "planar": "chunky", pal_str);
+            fclose(f);
+            break;
         }
 
         page[i].path = argv[i+1];
 
         // one screen, several bitmaps: those go in when they are actually shown
         if (!page[i].screen_info.keep_screen)
-            page[i].screen = load_bitmap(f, &page[i].bitmap_info, &page[i].screen_info);
+            page[i].screen = load_bitmap(f, &page[i].bitmap_info, &page[i].screen_info, error);
 
         fclose(f);
+
+        if (error[0])
+            break;
     }
+
+    if (error[0])
+        goto exit_gem;
 
     // a VDI palette bitmap is shown without touching any of this
     if (!vdi_pages) {
@@ -221,13 +228,8 @@ int main(int argc, char* argv[])
 
     // OS area
     {
-
-        if (app_id == -1) {
-            // if AES is not present, clean up but don't exit
-            appl_exit();
-        } else {
+        if (app_id != -1)
             wind_update(BEG_UPDATE);
-        }
 
         void* old_physbase = Physbase();
 
@@ -259,14 +261,17 @@ int main(int argc, char* argv[])
                 // nothing to set up, it goes straight into the screen we are drawing on
                 FILE* f = fopen(page[page_index].path, "rb");
                 if (!f) {
-                    fprintf(stderr, "Failed to open '%s'.\r\n", page[page_index].path);
-                    exit_code = EXIT_FAILURE;
+                    snprintf(error, sizeof(error), "Failed to open '%s'.", page[page_index].path);
                     break;
                 }
 
-                BitmapInfo bitmap_info = load_bitmap_info(f, vdo_val);
-                load_bitmap(f, &bitmap_info, &page[page_index].screen_info);
+                BitmapInfo bitmap_info = load_bitmap_info(f, vdo_val, error);
+                if (!error[0])
+                    load_bitmap(f, &bitmap_info, &page[page_index].screen_info, error);
                 fclose(f);
+
+                if (error[0])
+                    break;
             } else if (page[page_index].screen_info.rez != -1) {
                 Setscreen(SCR_NOCHANGE, page[page_index].screen, page[page_index].screen_info.rez);
             } else if (page[page_index].screen_info.mode != -1) {
@@ -314,13 +319,8 @@ int main(int argc, char* argv[])
             VsetMode(page[0].screen_info.old_mode);
         }
 
-        if (vdi_handle != 0)
-            v_clsvwk(vdi_handle);
-
-        if (app_id != -1) {
+        if (app_id != -1)
             wind_update(END_UPDATE);
-            appl_exit();
-        }
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -344,5 +344,14 @@ int main(int argc, char* argv[])
         }
     }
 
-    return exit_code;
+exit_gem:
+    if (vdi_handle != 0)
+        v_clsvwk(vdi_handle);
+
+    appl_exit();
+
+    if (error[0])
+        print_error(error);
+
+    return EXIT_SUCCESS;
 }

@@ -29,16 +29,15 @@
 
 #include "c2p-asm.h"
 
-void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* screen_info)
+void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* screen_info, char* error)
 {
     char* screen = NULL;
 
     if (!screen_info->keep_screen) {
         screen = (char*)Mxalloc((screen_info->width * screen_info->height * screen_info->bpp / 8) + 15, MX_STRAM);
         if (!screen) {
-            fprintf(stderr, "Not enough ST-RAM.\r\n");
-            getchar();
-            exit(EXIT_FAILURE);
+            sprintf(error, "Not enough ST-RAM.");
+            return NULL;
         }
     }
 
@@ -81,9 +80,8 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
     if (c2p) {
         c2p_buffer = (char*)malloc(final_width * bitmap_info->bpc);
         if (!c2p_buffer) {
-            fprintf(stderr, "Not enough RAM for C2P.\r\n");
-            getchar();
-            exit(EXIT_FAILURE);
+            sprintf(error, "Not enough RAM for C2P.");
+            return NULL;
         }
     }
 
@@ -128,9 +126,8 @@ void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* scre
     }
 
     if (file_error) {
-        fprintf(stderr, "I/O error.\r\n");
-        getchar();
-        exit(EXIT_FAILURE);
+        sprintf(error, "I/O error.");
+        return NULL;
     }
 
     free(c2p_buffer);

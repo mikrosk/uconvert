@@ -26,23 +26,21 @@
 
 #include "uimg.h"
 
-BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val)
+BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val, char* error)
 {
+    BitmapInfo bitmap_info = {};
     FileHeader file_header;
 
     if (fread(&file_header, sizeof(file_header), 1, f) != 1) {
-        fprintf(stderr, "Read error.\r\n");
-        getchar();
-        exit(EXIT_FAILURE);
+        sprintf(error, "Read error.");
+        return bitmap_info;
     }
 
     if (strncmp(file_header.id, "UIMG", 4) != 0) {
-        fprintf(stderr, "Invalid header: '%.4s'.\r\n", file_header.id);
-        getchar();
-        exit(EXIT_FAILURE);
+        sprintf(error, "Invalid header: '%.4s'.", file_header.id);
+        return bitmap_info;
     }
 
-    BitmapInfo bitmap_info = {};
     bitmap_info.bpp = file_header.bitsPerPixel;
     bitmap_info.bpc = file_header.bytesPerChunk;
 
@@ -60,27 +58,23 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val)
     fread(&bitmap_info.height, sizeof(bitmap_info.height), 1, f);
 
     if (bitmap_info.width == 0 || bitmap_info.height == 0) {
-        fprintf(stderr, "Bitmap data not present.\r\n");
-        getchar();
-        exit(EXIT_FAILURE);
+        sprintf(error, "Bitmap data not present.");
+        return bitmap_info;
     }
 
     if (bitmap_info.palette_type == PaletteTypeTT && vdo_val != VdoValueTT) {
-        fprintf(stdout, "TT palette can be set only on TT.\r\n");
-        getchar();
-        exit(EXIT_FAILURE);
+        sprintf(error, "TT palette can be set only on TT.");
+        return bitmap_info;
     }
 
     if (bitmap_info.palette_type == PaletteTypeFalcon && vdo_val != VdoValueFalcon) {
-        fprintf(stdout, "Falcon palette can be set only on Falcon.\r\n");
-        getchar();
-        exit(EXIT_FAILURE);
+        sprintf(error, "Falcon palette can be set only on Falcon.");
+        return bitmap_info;
     }
 
     if (bitmap_info.bpc == 1 && bitmap_info.bpp != 4 && bitmap_info.bpp != 6 && bitmap_info.bpp != 8) {
-        fprintf(stdout, "Unsupported C2P configuration (bpp: %d, bpc: %d).\r\n", bitmap_info.bpp, bitmap_info.bpc);
-        getchar();
-        exit(EXIT_FAILURE);
+        sprintf(error, "Unsupported C2P configuration (bpp: %d, bpc: %d).", bitmap_info.bpp, bitmap_info.bpc);
+        return bitmap_info;
     }
 
     if (bitmap_info.palette_type == PaletteTypeSTE) {

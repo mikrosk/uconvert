@@ -41,7 +41,7 @@ typedef struct {
     uint16_t    height;
 } BitmapInfo;
 
-// exits on error
-BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val);
+// on failure 'error' is filled in and the result is not usable
+BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val, char* error);
 
 #endif
