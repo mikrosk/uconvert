@@ -23,6 +23,9 @@
 
 #include <stdint.h>
 
+// uconvert itself
 constexpr uint16_t VERSION = 0x0101;
+// the UIMG file format, bumped only when the layout changes
+constexpr uint16_t UIMG_VERSION = 0x0200;
 
 #endif // VERSION_H

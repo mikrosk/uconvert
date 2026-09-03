@@ -30,12 +30,13 @@ extern std::optional<int16_t>  bitmapHeight;          // -1 (if original height)
 extern std::optional<bool>     filter;                // if true, use filtering when resizing
 extern std::optional<bool>     dither;                // if true, use dithering when resizing and/or converting colours
 
-extern std::optional<int16_t>   bitsPerPixel;         // 1, 2, 4, 6, 8 (both planar and chunky); 16, 24, 32 (chunky only) or 0 (if explicitly disabled)
+extern std::optional<int16_t>   bitsPerPixel;         // 1, 2, 4, 6, 8 (both planar and chunky); 16, 24, 32 (chunky only)
 extern std::optional<int16_t>   bytesPerChunk;        // -1 (if implicit/packed), 1, 2, 3, 4 or 0 (if disabled)
 extern std::optional<int16_t>   paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPerPixel > 8 or explicitly disabled)
 extern std::optional<bool>      stCompatiblePalette;  // if true, use the ST/E palette registers
 extern std::optional<bool>      ttCompatiblePalette;  // if true, use the TT palette registers
 
+extern bool has_bitmap_data();
 extern std::string get_uimg_filename_ext();
 extern std::string parse_arguments(int argc, char* argv[]);
 

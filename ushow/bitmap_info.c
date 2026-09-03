@@ -54,9 +54,13 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val)
     else if ((file_header.flags & 0b11) == 0b11)
         bitmap_info.palette_type = PaletteTypeFalcon;
 
-    if (bitmap_info.bpp > 0) {
-        fread(&bitmap_info.width, sizeof(bitmap_info.width), 1, f);
-        fread(&bitmap_info.height, sizeof(bitmap_info.height), 1, f);
+    fread(&bitmap_info.width, sizeof(bitmap_info.width), 1, f);
+    fread(&bitmap_info.height, sizeof(bitmap_info.height), 1, f);
+
+    if (bitmap_info.width == 0 || bitmap_info.height == 0) {
+        fprintf(stderr, "Bitmap data not present.\r\n");
+        getchar();
+        exit(EXIT_FAILURE);
     }
 
     if (bitmap_info.palette_type == PaletteTypeTT && vdo_val != VdoValueTT) {

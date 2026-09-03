@@ -43,8 +43,8 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
 {
     // ID
     ofs.write("UIMG", 4);
-    ofs.put(VERSION >> 8);
-    ofs.put(VERSION & 0xff);
+    ofs.put(UIMG_VERSION >> 8);
+    ofs.put(UIMG_VERSION & 0xff);
     // flags: bit 15-8 7 6 5 4 3 2 1 0
     //                             | |
     //                             +-+- 00: no palette
@@ -63,19 +63,16 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
 
     ofs.put(flags >> 8);
     ofs.put(flags);
-    // bits per pixel (0 if bitmap not present)
+    // bits per pixel
     ofs.put(*bitsPerPixel);
-    // bytes per chunk (0 if planar words or bitmap not present, -1 if packed)
+    // bytes per chunk (0 if planar words, -1 if packed)
     ofs.put(*bytesPerChunk);
 
-    if (*bitsPerPixel) {
-        // width
-        ofs.put(width >> 8);
-        ofs.put(width);
-        // height
-        ofs.put(height >> 8);
-        ofs.put(height);
-    }
+    // width and height, 0 if there is no bitmap data
+    ofs.put(width >> 8);
+    ofs.put(width);
+    ofs.put(height >> 8);
+    ofs.put(height);
 
     // palette (st(e)/tt/falcon; if present)
 
@@ -304,15 +301,17 @@ int main(int argc, char* argv[])
 
         if (*bitmapWidth == -1)
             bitmapWidth = image.columns();
-        else if (*bitmapWidth <= 0)
+        else if (*bitmapWidth < 0)
             throw std::invalid_argument("Width must be a positive number.");
 
         if (*bitmapHeight == -1)
             bitmapHeight = image.rows();
-        else if (*bitmapHeight <= 0)
+        else if (*bitmapHeight < 0)
             throw std::invalid_argument("Height must be a positive number.");
 
-        if (static_cast<unsigned int>(*bitmapWidth) != image.columns() || static_cast<unsigned int>(*bitmapHeight) != image.rows()) {
+        if (has_bitmap_data()
+                && (static_cast<unsigned int>(*bitmapWidth) != image.columns()
+                    || static_cast<unsigned int>(*bitmapHeight) != image.rows())) {
             float old_ratio = (float)image.columns() / (float)image.rows();
 
             Geometry geometry;
@@ -332,7 +331,7 @@ int main(int argc, char* argv[])
         }
 
         if (saving_uimg) {
-            if (*bitsPerPixel && *bitsPerPixel <= 8) {
+            if (*bitsPerPixel <= 8) {
                 if (image.classType() != PseudoClass || image.colorMapSize() > (1u << *bitsPerPixel)) {
                     const size_t colors = image.classType() == PseudoClass
                             ? image.colorMapSize()
@@ -354,7 +353,7 @@ int main(int argc, char* argv[])
                     );
                 }
 
-                if (image.columns() % 16 != 0)
+                if (has_bitmap_data() && image.columns() % 16 != 0)
                     throw std::runtime_error("Width must be divisible by 16.");
             }
 
@@ -362,17 +361,21 @@ int main(int argc, char* argv[])
             if (!ofs)
                 throw std::runtime_error("Opening destination file failed.");
 
-            save_header(ofs, image.columns(), image.rows());
+            if (has_bitmap_data())
+                save_header(ofs, image.columns(), image.rows());
+            else
+                save_header(ofs, 0, 0);
+
             if (*paletteBits) {
                 if (*stCompatiblePalette)
-                    save_palette<StePaletteEntry>(ofs, image, (1 << *bitsPerPixel));
+                    save_palette<StePaletteEntry>(ofs, image, 1u << *bitsPerPixel);
                 else if (*ttCompatiblePalette)
-                    save_palette<TtPaletteEntry>(ofs, image, (1 << *bitsPerPixel));
+                    save_palette<TtPaletteEntry>(ofs, image, 1u << *bitsPerPixel);
                 else
-                    save_palette<FalconPaletteEntry>(ofs, image, (1 << *bitsPerPixel));
+                    save_palette<FalconPaletteEntry>(ofs, image, 1u << *bitsPerPixel);
             }
 
-            if (*bitsPerPixel) {
+            if (has_bitmap_data()) {
                 size_t atariImageSize = image.rows() * image.columns();
 
                 if (*bytesPerChunk > 0)
@@ -418,11 +421,16 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    std::cout << "File " << outputFilename
-              << " (" << *bitmapWidth << "x" << *bitmapHeight;
+    std::cout << "File " << outputFilename << " (";
 
-    if (saving_uimg)
-        std::cout << "@" << *bitsPerPixel;
+    if (saving_uimg && !has_bitmap_data()) {
+        std::cout << (1u << *bitsPerPixel) << "-colour palette";
+    } else {
+        std::cout << *bitmapWidth << "x" << *bitmapHeight;
+
+        if (saving_uimg)
+            std::cout << "@" << *bitsPerPixel;
+    }
 
     std::cout << ") has been saved." << std::endl;
 

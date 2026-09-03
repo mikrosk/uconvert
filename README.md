@@ -53,6 +53,8 @@ uConvert offers a quick summary every time you enter an uknown option but it's b
 ### `-width <num>` & `-height <num>`
 Resize input bitmap to given dimensions. Aspect ratio is **not** preserved but a warning message is printed if it has changed. Resizing takes `-filter` switch into account. It is possible to enter just one dimension, the other one is taken from source bitmap (same as entering value of `-1`).
 
+Setting either of them to `0` stores just a palette and no bitmap data. `-bpp` still says how many entries it has (`1<<bpp`, i.e. 2, 4, 16, 64 or 256).
+
 ### `-filter`
 Filter (smoothen) edges when resizing. This usually leads to increased number of colours and an implicit colour conversion process takes place. This conversion can be altered using `-dither`.
 
@@ -62,7 +64,7 @@ For output bitmap with 1 - 8 bpp an implicit conversion takes place if source bi
 Note: 16, 24 and 32 bpp bitmaps are never converted, individual pixels are just stored with as many bits as possible.
 
 ### `-bpp <num>`
-Bits per pixel in destination bitmap. Bitmap data generation can be disabled using `0` (i.e. only header & palette would be stored). `1` - `8` can be stored both in bitplane and chunky formats, `16` - `32` in chunky only. `16` uses Falcon hicolour RGB565 format.
+Bits per pixel in destination bitmap. `1` - `8` can be stored both in bitplane and chunky formats, `16` - `32` in chunky only. `16` uses Falcon hicolour RGB565 format.
 
 ### `-bpc <num>`
 Bytes per chunk in destination bitmap. `0` means generating bitplane data, `1` - `4` means chunky data of 1, 2, 3 or 4 bytes per pixel (default for bpp > 8). `-1` means a special packed chunky mode, where pixels are stored as dense as possible, i.e. for 2 bpp it would be `0bAABBCCDD` per byte (instead of `0b000000AA`, `0b000000BB`, `0b000000CC`, `0b000000DD` with `-bpc 1`).
@@ -95,14 +97,14 @@ uint16_t    version;
 //                                  10: TT compatible palette
 //                                  11: Falcon compatible palette
 uint16_t    flags;
-// 0, 1, 2, 4, 6, 8, 16, 24, 32
+// 1, 2, 4, 6, 8, 16, 24, 32
 uint8_t     bitsPerPixel;
 // -1, 0, 1, 2, 3, 4
 int8_t      bytesPerChunk;
 
-// in pixels, present only if bitsPerPixel > 0
+// in pixels, 0 if there is no bitmap data
 uint16_t    width;
-// in pixels, present only if bitsPerPixel > 0
+// in pixels, 0 if there is no bitmap data
 uint16_t    height;
 
 // (1<<bitsPerPixel) palette entries, present only if flags & 0b11 != 0b00
@@ -112,7 +114,7 @@ union {
   uint32_t falconPaletteEntry;
 } Palette[1<<bitsPerPixel];
 
-// present only if bitsPerPixel > 0
+// present only if neither width nor height is 0
 char* bitmapData;
 ```
 

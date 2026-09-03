@@ -41,7 +41,6 @@ bool is_uimg(const std::string& filePath)
     fileHeader.flags   = (fileHeader.flags >> 8)   | (fileHeader.flags << 8);
 
     return strncmp(fileHeader.id, "UIMG", 4) == 0
-            && fileHeader.bitsPerPixel != 0
             && (fileHeader.bitsPerPixel > 8 || (fileHeader.flags & 0b11) != 0b00);
 }
 
@@ -65,6 +64,9 @@ Magick::Image load_uimg(const std::string& filePath)
     height |= ifs.get();
     height <<= 8;
     height |= ifs.get();
+
+    if (!width || !height)
+        throw std::invalid_argument("Bitmap data not present.");
 
     Magick::Image image({width, height}, {0, 0, 0});
 

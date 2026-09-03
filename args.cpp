@@ -38,7 +38,7 @@ std::optional<int16_t>  bitmapHeight;         // -1 (if original height) or any 
 std::optional<bool>     filter;               // if true, use filtering when resizing
 std::optional<bool>     dither;               // if true, use dithering when resizing and/or converting colours
 
-std::optional<int16_t>  bitsPerPixel;         // 1, 2, 4, 6, 8 (both planar and chunky); 16, 24, 32 (chunky only) or 0 (if explicitly disabled)
+std::optional<int16_t>  bitsPerPixel;         // 1, 2, 4, 6, 8 (both planar and chunky); 16, 24, 32 (chunky only)
 std::optional<int16_t>  bytesPerChunk;        // -1 (if implicit/packed), 1, 2, 3, 4 or 0 (if disabled)
 std::optional<int16_t>  paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPerPixel > 8 or explicitly disabled)
 std::optional<bool>     stCompatiblePalette;  // if true, use ST/E palette registers
@@ -62,7 +62,7 @@ constexpr bool        DEFAULT_ST_COMPATIBLE  = false;
 constexpr bool        DEFAULT_TT_COMPATIBLE  = false;
 
 std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::optional<int16_t>&>> allowedValues = {
-    { "-bpp",    { { 0, 1, 2, 4, 6, 8, 16, 24, 32 }, bitsPerPixel  } },
+    { "-bpp",    { { 1, 2, 4, 6, 8, 16, 24, 32 },    bitsPerPixel  } },
     { "-bpc",    { { -1, 0, 1, 2, 3, 4 },            bytesPerChunk } },
     { "-pal",    { { 0, 9, 12, 18, 24 },             paletteBits   } },
     { "-width",  { { },                              bitmapWidth   } },
@@ -88,7 +88,7 @@ static void print_help(const char* name)
         << "  -height <num>    specify new bitmap height [default " << DEFAULT_BITMAP_HEIGHT << "]" << std::endl
         << "  -filter          use filtering when resizing [default " << std::boolalpha << DEFAULT_FILTER << "]" << std::endl
         << "  -dither          use dithering when resizing and/or converting colours [default " << std::boolalpha << DEFAULT_DITHER << "]" << std::endl
-        << "  -bpp <num>       bits per pixel, i.e. colour depth (0, 1, 2, 4, 6, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
+        << "  -bpp <num>       bits per pixel, i.e. colour depth (1, 2, 4, 6, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
         << "  -bpc <num>       bytes per chunk (-1 for packed chunky pixels [default for bpp > 8], 0, 1, 2, 3, 4) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
         << "  -pal <num>       number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
         << "  -st              output palette in ST/E-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_ST_COMPATIBLE << "]" << std::endl
@@ -98,17 +98,23 @@ static void print_help(const char* name)
     throw std::invalid_argument(oss.str());
 }
 
+// a zero dimension says the file carries a palette and no bitmap
+bool has_bitmap_data()
+{
+    return *bitmapWidth && *bitmapHeight;
+}
+
 std::string get_uimg_filename_ext()
 {
     std::ostringstream oss;
 
-    if (!*bitsPerPixel && *paletteBits) {
+    if (!has_bitmap_data() && *paletteBits) {
         // just palette
         oss << ".p" << std::setw(2) << std::setfill('0') << *paletteBits;
-    } else if (*bitsPerPixel && *paletteBits && !*bytesPerChunk) {
+    } else if (has_bitmap_data() && *paletteBits && !*bytesPerChunk) {
         // regular planar bitmap
         oss << ".bp" << *bitsPerPixel;
-    } else if (*bitsPerPixel && (*bitsPerPixel > 8 || *paletteBits) && *bytesPerChunk) {
+    } else if (has_bitmap_data() && (*bitsPerPixel > 8 || *paletteBits) && *bytesPerChunk) {
         // regular chunky bitmap
         oss << ".c" << std::setw(2) << std::setfill('0') << *bitsPerPixel;
     } else {
@@ -198,8 +204,11 @@ std::string parse_arguments(int argc, char* argv[])
             if (*bitsPerPixel == 2 && !(*stCompatiblePalette || *ttCompatiblePalette))
                 throw std::invalid_argument("2 bits per pixel work only with '-st' or '-tt'.");
 
-            if (*bytesPerChunk && !*bitsPerPixel)
-                throw std::invalid_argument("-bpc requires bpp > 0.");
+            if (!has_bitmap_data() && !*paletteBits)
+                throw std::invalid_argument("Storing just a palette requires '-pal'.");
+
+            if (!has_bitmap_data() && *bytesPerChunk)
+                throw std::invalid_argument("-bpc requires a bitmap.");
 
             if (*bitsPerPixel <= 8 && *bytesPerChunk > 1)
                 throw std::invalid_argument("-bpp <= 8 requires bpc <= 1.");
