@@ -64,6 +64,18 @@ do
 	uconvert $ARGS -bpp 4 -bpc -1 -pal $pal -st -out "$DIR/test-nib.c04" test.webp
 done
 
+DIR="vdi"
+rm -rf "$DIR"
+mkdir "$DIR"
+
+uconvert $ARGS -bpp 1 -vdi -out "$DIR/test.bp1" test.webp
+uconvert $ARGS -bpp 2 -vdi -out "$DIR/test.bp2" test.webp
+uconvert $ARGS -bpp 4 -vdi -out "$DIR/test.bp4" test.webp
+uconvert $ARGS -bpp 8 -vdi -out "$DIR/test.bp8" test.webp
+
+uconvert $ARGS -bpp 4 -bpc 1 -vdi -out "$DIR/test.c04" test.webp
+uconvert $ARGS -bpp 8 -bpc 1 -vdi -out "$DIR/test.c08" test.webp
+
 for bpp in 16 24 32
 do
 	DIR="bpp.$bpp"

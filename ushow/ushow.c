@@ -37,6 +37,7 @@ static struct {
     BitmapInfo bitmap_info;
     ScreenInfo screen_info;
     void*      screen;
+    char*      path;        // kept for the bitmaps we draw only when they are shown
 } page[256];
 
 static void print_help()
@@ -45,6 +46,26 @@ static void print_help()
     fprintf(stderr, "Press enter to exit.\r\n");
     getchar();
     exit(EXIT_FAILURE);
+}
+
+static int16_t saved_palette[256][3];
+
+static void save_vdi_palette(int16_t vdi_handle, size_t colors)
+{
+    for (int16_t pen = 0; pen < (int16_t)colors; ++pen)
+        vq_color(vdi_handle, pen, 1, saved_palette[pen]);
+}
+
+static void restore_vdi_palette(int16_t vdi_handle, size_t colors)
+{
+    for (int16_t pen = 0; pen < (int16_t)colors; ++pen)
+        vs_color(vdi_handle, pen, saved_palette[pen]);
+}
+
+static void set_vdi_palette(const BitmapInfo* bitmap_info, int16_t vdi_handle)
+{
+    for (int16_t pen = 0; pen < (1 << bitmap_info->bpp); ++pen)
+        vs_color(vdi_handle, pen, (int16_t*)bitmap_info->palette.vdi[pen]);
 }
 
 int main(int argc, char* argv[])
@@ -63,6 +84,49 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
+    // GEM first: get_screen_info() needs the size of the screen the VDI is using
+    // to tell whether a VDI palette bitmap fits it
+    int16_t app_id = appl_init();
+    bool aes_present = aes_global[0] != 0x0000;
+
+    if (app_id == -1 && aes_present) {
+        fprintf(stderr, "appl_init() failed.\r\n");
+        getchar();
+        return EXIT_FAILURE;
+    }
+
+    int16_t vdi_handle = 0;
+    size_t vdi_width = 0, vdi_height = 0, vdi_bpp = 0;
+
+    if (app_id != -1) {
+        int16_t work_in[11];
+        int16_t work_out[57];
+        int16_t dummy;
+
+        for (size_t i = 0; i < 10; ++i)
+            work_in[i] = 1;
+        work_in[10] = 2;
+
+        vdi_handle = graf_handle(&dummy, &dummy, &dummy, &dummy);
+        if (vdi_handle >= 1) {
+            v_opnvwk(work_in, &vdi_handle, work_out);
+
+            if (vdi_handle != 0) {
+                vdi_width  = work_out[0] + 1;
+                vdi_height = work_out[1] + 1;
+                for (vdi_bpp = 1; (1L << vdi_bpp) < work_out[13]; ++vdi_bpp)
+                    ;
+
+                save_vdi_palette(vdi_handle, 1L << vdi_bpp);
+            }
+        } else {
+            vdi_handle = 0;
+        }
+    }
+
+    bool vdi_pages = false, other_pages = false;
+    int exit_code = EXIT_SUCCESS;
+
     for (int i = 0; i < argc-1; ++i) {
         FILE* f = fopen(argv[i+1], "rb");
         if (!f) {
@@ -75,15 +139,31 @@ int main(int argc, char* argv[])
 
         page[i].bitmap_info = load_bitmap_info(f, vdo_val);
 
+        if (page[i].bitmap_info.palette_type == PaletteTypeVDI)
+            vdi_pages = true;
+        else
+            other_pages = true;
+
+        // one draws on the desktop's screen, the others take it over
+        if (vdi_pages && other_pages) {
+            fprintf(stderr, "Can't mix VDI palette bitmaps with the rest.\r\n");
+            getchar();
+            return EXIT_FAILURE;
+        }
+
         if (page[i].bitmap_info.width == 0 || page[i].bitmap_info.height == 0) {
             fprintf(stdout, "No bitmap data - nothing to show.\r\n");
             getchar();
             return EXIT_SUCCESS;
         }
 
-        page[i].screen_info = get_screen_info(&page[i].bitmap_info, vdo_val);
+        if (page[i].bitmap_info.palette_type == PaletteTypeVDI)
+            page[i].screen_info = get_vdi_screen_info(&page[i].bitmap_info, vdi_width, vdi_height, vdi_bpp);
+        else
+            page[i].screen_info = get_screen_info(&page[i].bitmap_info, vdo_val);
 
-        if (page[i].screen_info.rez == -1 && page[i].screen_info.mode == -1) {
+        if (!page[i].screen_info.keep_screen
+                && page[i].screen_info.rez == -1 && page[i].screen_info.mode == -1) {
             fprintf(stderr, "Unable to display: %dx%d@%dbpp (%s).\r\n",
                     page[i].bitmap_info.width, page[i].bitmap_info.height, page[i].bitmap_info.bpp,
                     page[i].bitmap_info.bpc == 0 ? "planar": "chunky");
@@ -102,6 +182,9 @@ int main(int argc, char* argv[])
             case PaletteTypeFalcon:
                 pal_str = "Falcon";
                 break;
+            case PaletteTypeVDI:
+                pal_str = "VDI";
+                break;
             }
             fprintf(stderr, "Palette: %s.\r\n", pal_str);
 
@@ -109,36 +192,35 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        page[i].screen = load_bitmap(f, &page[i].bitmap_info, &page[i].screen_info);
+        page[i].path = argv[i+1];
+
+        // one screen, several bitmaps: those go in when they are actually shown
+        if (!page[i].screen_info.keep_screen)
+            page[i].screen = load_bitmap(f, &page[i].bitmap_info, &page[i].screen_info);
 
         fclose(f);
     }
 
-    switch (vdo_val) {
-    case VdoValueST:
-    case VdoValueSTE:
-        Supexec(asm_screen_ste_save);
-        break;
-    case VdoValueTT:
-        Supexec(asm_screen_tt_save);
-        break;
-    case VdoValueFalcon:
-        Supexec(asm_screen_falcon_save);
-        break;
+    // a VDI palette bitmap is shown without touching any of this
+    if (!vdi_pages) {
+        switch (vdo_val) {
+        case VdoValueST:
+        case VdoValueSTE:
+            Supexec(asm_screen_ste_save);
+            break;
+        case VdoValueTT:
+            Supexec(asm_screen_tt_save);
+            break;
+        case VdoValueFalcon:
+            Supexec(asm_screen_falcon_save);
+            break;
+        }
     }
 
     //////////////////////////////////////////////////////////////////////////
 
     // OS area
     {
-        int16_t app_id = appl_init();
-        bool aes_present  = aes_global[0] != 0x0000;
-
-        if (app_id == -1 && aes_present) {
-            fprintf(stderr, "appl_init() failed.\r\n");
-            getchar();
-            return EXIT_FAILURE;
-        }
 
         if (app_id == -1) {
             // if AES is not present, clean up but don't exit
@@ -167,11 +249,25 @@ int main(int argc, char* argv[])
             if (prev_page_index == page_index && ch != 0xff)
                 continue;
 
-            // Vsync() is needed for catching up raw palette access with (V)setScreen()
-            // otherwise the new mode will reset the newly set palette
-            Vsync();
+            if (!page[page_index].screen_info.keep_screen) {
+                // Vsync() is needed for catching up raw palette access with (V)setScreen()
+                // otherwise the new mode will reset the newly set palette
+                Vsync();
+            }
 
-            if (page[page_index].screen_info.rez != -1) {
+            if (page[page_index].screen_info.keep_screen) {
+                // nothing to set up, it goes straight into the screen we are drawing on
+                FILE* f = fopen(page[page_index].path, "rb");
+                if (!f) {
+                    fprintf(stderr, "Failed to open '%s'.\r\n", page[page_index].path);
+                    exit_code = EXIT_FAILURE;
+                    break;
+                }
+
+                BitmapInfo bitmap_info = load_bitmap_info(f, vdo_val);
+                load_bitmap(f, &bitmap_info, &page[page_index].screen_info);
+                fclose(f);
+            } else if (page[page_index].screen_info.rez != -1) {
                 Setscreen(SCR_NOCHANGE, page[page_index].screen, page[page_index].screen_info.rez);
             } else if (page[page_index].screen_info.mode != -1) {
                 // VsetScreen(SCR_NOCHANGE, page[page_index].screen, SCR_MODECODE, page[page_index].screen_infomode);
@@ -182,7 +278,10 @@ int main(int argc, char* argv[])
                 VsetScreen(SCR_NOCHANGE, page[page_index].screen, SCR_NOCHANGE, SCR_NOCHANGE);
             }
 
-            if (page[page_index].bitmap_info.palette_type != PaletteTypeNone) {
+            if (page[page_index].bitmap_info.palette_type == PaletteTypeVDI) {
+                // not under Super(), these are VDI calls
+                set_vdi_palette(&page[page_index].bitmap_info, vdi_handle);
+            } else if (page[page_index].bitmap_info.palette_type != PaletteTypeNone) {
                 int32_t ssp = Super(0L);
 
                 // Don't use Setpalette() / EsetPalette() / VsetRGB() here as we want to work
@@ -201,7 +300,12 @@ int main(int argc, char* argv[])
         } while ((aes_present && (ch = ((evnt_keybd() >> 8) & 0xff)) != 0x01)
                  || (!aes_present && (ch = ((Crawcin() >> 16) & 0xff)) != 0x01));
 
-        if (page[0].screen_info.old_rez != -1) {
+        if (page[0].screen_info.keep_screen) {
+            // the VDI remembers what vs_color() was told, so give it back its own
+            // colours before letting GEM redraw the desktop
+            restore_vdi_palette(vdi_handle, 1L << vdi_bpp);
+            form_dial(FMD_FINISH, 0, 0, 0, 0, 0, 0, vdi_width, vdi_height);
+        } else if (page[0].screen_info.old_rez != -1) {
             Setscreen(SCR_NOCHANGE, old_physbase, page[0].screen_info.old_rez);
         } else if (page[0].screen_info.old_mode != -1) {
             // make VDI (and SuperVidel registers) happy
@@ -209,6 +313,9 @@ int main(int argc, char* argv[])
             VsetScreen(SCR_NOCHANGE, old_physbase, SCR_NOCHANGE, SCR_NOCHANGE);
             VsetMode(page[0].screen_info.old_mode);
         }
+
+        if (vdi_handle != 0)
+            v_clsvwk(vdi_handle);
 
         if (app_id != -1) {
             wind_update(END_UPDATE);
@@ -218,22 +325,24 @@ int main(int argc, char* argv[])
 
     //////////////////////////////////////////////////////////////////////////
 
-    switch (vdo_val) {
-    case VdoValueST:
-    case VdoValueSTE:
-        // restoring also the Shifter/video base state, redudant
-        Supexec(asm_screen_ste_restore);
-        break;
-    case VdoValueTT:
-        // STE palette and Shifter are mapped to TT ones, no need to restore them
-        // restoring also the Shifter/video base state, redudant
-        Supexec(asm_screen_tt_restore);
-        break;
-    case VdoValueFalcon:
-        // as VsetMode(old_falcon_mode) isn't 100% reliable, it's not redudant at all
-        Supexec(asm_screen_falcon_restore);
-        break;
+    if (!vdi_pages) {
+        switch (vdo_val) {
+        case VdoValueST:
+        case VdoValueSTE:
+            // restoring also the Shifter/video base state, redudant
+            Supexec(asm_screen_ste_restore);
+            break;
+        case VdoValueTT:
+            // STE palette and Shifter are mapped to TT ones, no need to restore them
+            // restoring also the Shifter/video base state, redudant
+            Supexec(asm_screen_tt_restore);
+            break;
+        case VdoValueFalcon:
+            // as VsetMode(old_falcon_mode) isn't 100% reliable, it's not redudant at all
+            Supexec(asm_screen_falcon_restore);
+            break;
+        }
     }
 
-    return EXIT_SUCCESS;
+    return exit_code;
 }

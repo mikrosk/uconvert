@@ -43,6 +43,7 @@ std::optional<int16_t>  bytesPerChunk;        // -1 (if implicit/packed), 1, 2, 
 std::optional<int16_t>  paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPerPixel > 8 or explicitly disabled)
 std::optional<bool>     stCompatiblePalette;  // if true, use ST/E palette registers
 std::optional<bool>     ttCompatiblePalette;  // if true, use TT palette registers
+std::optional<bool>     vdiCompatiblePalette; // if true, store the palette the way vq_color() returns it
 // Possible TODOs:
 //  - grayscale
 //  - cat picture.gif | giftopnm | pnmquant 16 | ppmtoneo > picture.neo (call Netpbm instead of using GraphicsMagick)
@@ -60,6 +61,7 @@ constexpr int16_t DEFAULT_ST_TT_PALETTE_BITS = 12;
 constexpr int16_t      DEFAULT_PALETTE_BITS  = 24;
 constexpr bool        DEFAULT_ST_COMPATIBLE  = false;
 constexpr bool        DEFAULT_TT_COMPATIBLE  = false;
+constexpr bool       DEFAULT_VDI_COMPATIBLE  = false;
 
 std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::optional<int16_t>&>> allowedValues = {
     { "-bpp",    { { 1, 2, 4, 6, 8, 16, 24, 32 },    bitsPerPixel  } },
@@ -72,6 +74,7 @@ std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::opti
 std::unordered_map<std::string, std::optional<bool>&> allowedFlags = {
     { "-st",     stCompatiblePalette  },
     { "-tt",     ttCompatiblePalette  },
+    { "-vdi",    vdiCompatiblePalette },
     { "-filter", filter               },
     { "-dither", dither               },
 };
@@ -93,6 +96,7 @@ static void print_help(const char* name)
         << "  -pal <num>       number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl
         << "  -st              output palette in ST/E-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_ST_COMPATIBLE << "]" << std::endl
         << "  -tt              output palette in TT-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_TT_COMPATIBLE << "]" << std::endl
+        << "  -vdi             output palette in VDI-specific format [default " << std::boolalpha << DEFAULT_VDI_COMPATIBLE << "]" << std::endl
         << "  -out <filename>  output bitmap as <filename> (the format is taken from its extension)"  << std::endl;
 
     throw std::invalid_argument(oss.str());
@@ -157,6 +161,9 @@ std::string parse_arguments(int argc, char* argv[])
             if (!ttCompatiblePalette.has_value())
                 ttCompatiblePalette = DEFAULT_TT_COMPATIBLE;
 
+            if (!vdiCompatiblePalette.has_value())
+                vdiCompatiblePalette = DEFAULT_VDI_COMPATIBLE;
+
             if (!bitsPerPixel.has_value()) {
                 if (*stCompatiblePalette)
                     bitsPerPixel = DEFAULT_ST_BITS_PER_PIXEL;
@@ -186,8 +193,15 @@ std::string parse_arguments(int argc, char* argv[])
             }
 
             // do some sanity checks
-            if (*stCompatiblePalette && *ttCompatiblePalette)
-                throw std::invalid_argument("Can't set both '-st' and '-tt'.");
+            if (*stCompatiblePalette + *ttCompatiblePalette + *vdiCompatiblePalette > 1)
+                throw std::invalid_argument("Can't set more than one of '-st', '-tt' and '-vdi'.");
+
+            if (*vdiCompatiblePalette && !*paletteBits)
+                throw std::invalid_argument("'-vdi' requires a palette.");
+
+            if (*vdiCompatiblePalette
+                    && *bitsPerPixel != 1 && *bitsPerPixel != 2 && *bitsPerPixel != 4 && *bitsPerPixel != 8)
+                throw std::invalid_argument("'-vdi' requires 1, 2, 4 or 8 bits per pixel.");
 
             if (*bitsPerPixel > 8 && *paletteBits)
                 throw std::invalid_argument("Can't have palette with '-bpp' > 8.");
@@ -201,8 +215,10 @@ std::string parse_arguments(int argc, char* argv[])
             if (*bitsPerPixel > 8 && *ttCompatiblePalette)
                 throw std::invalid_argument("'-tt' requires 1, 2, 4, 6 or 8 bits per pixel.");
 
-            if (*bitsPerPixel == 2 && !(*stCompatiblePalette || *ttCompatiblePalette))
-                throw std::invalid_argument("2 bits per pixel work only with '-st' or '-tt'.");
+            // 2 bitplanes is an ST mode, the Falcon runs it off the ST palette
+            // registers; with a VDI palette the VDI sorts that out itself
+            if (*bitsPerPixel == 2 && !(*stCompatiblePalette || *ttCompatiblePalette || *vdiCompatiblePalette))
+                throw std::invalid_argument("2 bits per pixel work only with '-st', '-tt' or '-vdi'.");
 
             if (!has_bitmap_data() && !*paletteBits)
                 throw std::invalid_argument("Storing just a palette requires '-pal'.");

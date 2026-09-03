@@ -21,6 +21,7 @@
 #ifndef SCREEN_INFO_H
 #define SCREEN_INFO_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -45,8 +46,10 @@ typedef struct
     size_t  bpp;
     int16_t rez, old_rez;   // STE, TT
     int16_t mode, old_mode; // Falcon
+    bool    keep_screen;    // draw into what is already on screen, don't set a mode
 } ScreenInfo;
 
 extern ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val);
+extern ScreenInfo get_vdi_screen_info(const BitmapInfo* bitmap_info, size_t width, size_t height, size_t bpp);
 
 #endif

@@ -25,7 +25,8 @@ typedef enum {
     PaletteTypeNone,
     PaletteTypeSTE,
     PaletteTypeTT,
-    PaletteTypeFalcon
+    PaletteTypeFalcon,
+    PaletteTypeVDI
 } PaletteType;
 
 #endif

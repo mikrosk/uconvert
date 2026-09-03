@@ -41,7 +41,7 @@ bool is_uimg(const std::string& filePath)
     fileHeader.flags   = (fileHeader.flags >> 8)   | (fileHeader.flags << 8);
 
     return strncmp(fileHeader.id, "UIMG", 4) == 0
-            && (fileHeader.bitsPerPixel > 8 || (fileHeader.flags & 0b11) != 0b00);
+            && (fileHeader.bitsPerPixel > 8 || (fileHeader.flags & 0b111) != 0b000);
 }
 
 Magick::Image load_uimg(const std::string& filePath)
@@ -79,8 +79,8 @@ Magick::Image load_uimg(const std::string& filePath)
         for (size_t i = 0; i < image.colorMapSize(); ++i) {
             Magick::Color color;
 
-            switch (fileHeader.flags & 0b11) {
-            case 0b01: {
+            switch (fileHeader.flags & 0b111) {
+            case 0b001: {
                 // ST/E compatible palette
                 StePaletteEntry palEntry = {};
                 palEntry.wrapper.value |= ifs.get();
@@ -93,7 +93,7 @@ Magick::Image load_uimg(const std::string& filePath)
                 color.blueQuantum(  ((palEntry.b321 << 1) | palEntry.b0) << shift );
             } break;
 
-            case 0b10: {
+            case 0b010: {
                 // TT compatible palette
                 TtPaletteEntry palEntry = {};
                 palEntry.wrapper.value |= ifs.get();
@@ -106,7 +106,7 @@ Magick::Image load_uimg(const std::string& filePath)
                 color.blueQuantum(  palEntry.b3210 << shift );
             } break;
 
-            case 0b11: {
+            case 0b011: {
                 // Falcon compatible palette
                 FalconPaletteEntry palEntry = {};
                 palEntry.wrapper.value |= ifs.get();
@@ -123,13 +123,28 @@ Magick::Image load_uimg(const std::string& filePath)
                 color.blueQuantum(  ((palEntry.b765432 << 2) | palEntry.b10) << shift );
             } break;
 
+            case 0b100: {
+                // VDI palette, three 0-1000 words per pen
+                unsigned int component[3] = {};
+                for (unsigned int& c : component) {
+                    c  = ifs.get() << 8;
+                    c |= ifs.get();
+                }
+
+                color.redQuantum(   component[0] * MaxRGB / 1000 );
+                color.greenQuantum( component[1] * MaxRGB / 1000 );
+                color.blueQuantum(  component[2] * MaxRGB / 1000 );
+            } break;
+
             default:
                 throw_oss<std::invalid_argument>(std::ostringstream()
-                    << "Unexpected palette type: " << (fileHeader.flags & 0b11)
+                    << "Unexpected palette type: " << (fileHeader.flags & 0b111)
                 );
             }
 
-            image.colorMap(i, color);
+            // a VDI palette is stored by pen, everything else by colour index
+            image.colorMap((fileHeader.flags & 0b111) == 0b100
+                    ? vdi_color_index(i, image.colorMapSize()) : i, color);
         }
     } else {
         image.classType(Magick::DirectClass);

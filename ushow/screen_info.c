@@ -24,6 +24,24 @@
 #include <mint/falcon.h>
 #include <stdbool.h>
 
+ScreenInfo get_vdi_screen_info(const BitmapInfo* bitmap_info, size_t width, size_t height, size_t bpp)
+{
+    ScreenInfo screen_info = {};
+    screen_info.rez  = screen_info.old_rez  = -1;
+    screen_info.mode = screen_info.old_mode = -1;
+
+    // no conversion: the bitmap has to be in the depth the screen already is
+    if (bitmap_info->bpp != bpp)
+        return screen_info;
+
+    screen_info.width  = width;
+    screen_info.height = height;
+    screen_info.bpp    = bpp;
+    screen_info.keep_screen = true;
+
+    return screen_info;
+}
+
 ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val)
 {
     ScreenInfo screen_info = {};

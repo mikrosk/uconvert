@@ -21,6 +21,7 @@
 #ifndef PALETTE_H
 #define PALETTE_H
 
+#include <cstddef>
 #include <cstdint>
 
 #include "bitfield.h"
@@ -54,5 +55,22 @@ BEGIN_BITFIELD_TYPE(StePaletteEntry, uint16_t)
     ADD_BITFIELD_MEMBER(b0,      3, 1)
     ADD_BITFIELD_MEMBER(b321,    0, 3)
 END_BITFIELD_TYPE()
+
+// three words per entry, each 0-1000, the way vs_color()/vq_color() take them
+struct VdiPaletteEntry {
+    uint16_t r;
+    uint16_t g;
+    uint16_t b;
+};
+
+// which colour a VDI pen stands for; TOS 4 calls this table MAP_COL
+constexpr size_t vdi_color_index(const size_t pen, const size_t paletteSize)
+{
+    constexpr uint16_t mapCol[16] = { 0, 255, 1, 2, 4, 6, 3, 5, 7, 8, 9, 10, 12, 14, 11, 13 };
+
+    const size_t index = pen < 16 ? mapCol[pen] : (pen == 255 ? 15 : pen);
+
+    return index & (paletteSize - 1);
+}
 
 #endif // PALETTE_H

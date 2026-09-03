@@ -78,6 +78,9 @@ Store 9- and 12-bit palette in 16-bit ST/E palette format (`0000 rRRR gGGG bBBB`
 ### `-tt`
 Store 9- and 12-bit palette in 16-bit TT palette format (`0000 RRRR GGGG BBBB`).
 
+### `-vdi`
+Store the palette the way `vq_color()` returns it: three 16-bit words per entry, each `0` - `1000`. VDI pen order instead of by colour index.
+
 ### `-out <filename.ext>`
 Export source bitmap as `<filename.ext>`. If `<ext>` is the one the Atari switches would produce anyway, an Atari bitmap is written, otherwise the format is taken from `<ext>` - all popular formats like GIF, JPEG, PNG, WEBP, ... [whatever GraphicsMagick supports](http://www.graphicsmagick.org/formats.html); Atari switches are then ignored (but still validated) and only resizing/dithering is applied. Useful for reading uConvert's native Atari formats and displaying on the host platform but usable as a generic bitmap converter, too.
 
@@ -91,11 +94,12 @@ char        id[4];
 // 0xAABB (AA = major, BB = minor, 2 bytes)
 uint16_t    version;
 // flags: bit 15-8 7 6 5 4 3 2 1 0
-//                             | |
-//                             +-+- 00: no palette
-//                                  01: ST/E compatible palette
-//                                  10: TT compatible palette
-//                                  11: Falcon compatible palette
+//                           | | |
+//                           +-+-+- 000: no palette
+//                                  001: ST/E compatible palette
+//                                  010: TT compatible palette
+//                                  011: Falcon compatible palette
+//                                  100: VDI palette
 uint16_t    flags;
 // 1, 2, 4, 6, 8, 16, 24, 32
 uint8_t     bitsPerPixel;
@@ -107,11 +111,12 @@ uint16_t    width;
 // in pixels, 0 if there is no bitmap data
 uint16_t    height;
 
-// (1<<bitsPerPixel) palette entries, present only if flags & 0b11 != 0b00
+// (1<<bitsPerPixel) palette entries, present only if flags & 0b111 != 0b000
 union {
   uint16_t stePaletteEntry;
   uint16_t ttPaletteEntry;
   uint32_t falconPaletteEntry;
+  uint16_t vdiPaletteEntry[3];
 } Palette[1<<bitsPerPixel];
 
 // present only if neither width nor height is 0

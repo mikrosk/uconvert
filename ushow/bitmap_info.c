@@ -47,12 +47,14 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val)
     bitmap_info.bpc = file_header.bytesPerChunk;
 
     bitmap_info.palette_type = PaletteTypeNone;
-    if ((file_header.flags & 0b11) == 0b01)
+    if ((file_header.flags & 0b111) == 0b001)
         bitmap_info.palette_type = PaletteTypeSTE;
-    else if ((file_header.flags & 0b11) == 0b10)
+    else if ((file_header.flags & 0b111) == 0b010)
         bitmap_info.palette_type = PaletteTypeTT;
-    else if ((file_header.flags & 0b11) == 0b11)
+    else if ((file_header.flags & 0b111) == 0b011)
         bitmap_info.palette_type = PaletteTypeFalcon;
+    else if ((file_header.flags & 0b111) == 0b100)
+        bitmap_info.palette_type = PaletteTypeVDI;
 
     fread(&bitmap_info.width, sizeof(bitmap_info.width), 1, f);
     fread(&bitmap_info.height, sizeof(bitmap_info.height), 1, f);
@@ -87,6 +89,8 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val)
         fread(bitmap_info.palette.tt, sizeof(bitmap_info.palette.tt[0]), 1 << bitmap_info.bpp, f);
     } else if (bitmap_info.palette_type == PaletteTypeFalcon) {
         fread(bitmap_info.palette.falcon, sizeof(bitmap_info.palette.falcon[0]), 1 << bitmap_info.bpp, f);
+    } else if (bitmap_info.palette_type == PaletteTypeVDI) {
+        fread(bitmap_info.palette.vdi, sizeof(bitmap_info.palette.vdi[0]), 1 << bitmap_info.bpp, f);
     }
 
     return bitmap_info;

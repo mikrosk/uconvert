@@ -31,17 +31,24 @@
 
 void* load_bitmap(FILE* f, const BitmapInfo* bitmap_info, const ScreenInfo* screen_info)
 {
-    char* screen = (char*)Mxalloc((screen_info->width * screen_info->height * screen_info->bpp / 8) + 15, MX_STRAM);
-    if (!screen) {
-        fprintf(stderr, "Not enough ST-RAM.\r\n");
-        getchar();
-        exit(EXIT_FAILURE);
+    char* screen = NULL;
+
+    if (!screen_info->keep_screen) {
+        screen = (char*)Mxalloc((screen_info->width * screen_info->height * screen_info->bpp / 8) + 15, MX_STRAM);
+        if (!screen) {
+            fprintf(stderr, "Not enough ST-RAM.\r\n");
+            getchar();
+            exit(EXIT_FAILURE);
+        }
     }
 
     bool c2p = bitmap_info->bpc == 1 && (bitmap_info->bpp == 4 || bitmap_info->bpp == 6 || bitmap_info->bpp == 8)
-            && (screen_info->mode & 0x07) != BPS8C;
+            && (screen_info->keep_screen || (screen_info->mode & 0x07) != BPS8C);
 
-    char* screen_aligned = (char*)(((uintptr_t)screen + 15) & 0xfffffff0);
+    // no screen of our own: draw into the one the VDI is using
+    char* screen_aligned = screen_info->keep_screen
+            ? (char*)Logbase()
+            : (char*)(((uintptr_t)screen + 15) & 0xfffffff0);
     memset(screen_aligned, 0, screen_info->width * screen_info->height * screen_info->bpp / 8);
 
     char* c2p_buffer = NULL;

@@ -46,19 +46,22 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
     ofs.put(UIMG_VERSION >> 8);
     ofs.put(UIMG_VERSION & 0xff);
     // flags: bit 15-8 7 6 5 4 3 2 1 0
-    //                             | |
-    //                             +-+- 00: no palette
-    //                                  01: ST/E compatible palette
-    //                                  10: TT compatible palette
-    //                                  11: Falcon compatible palette
+    //                           | | |
+    //                           +-+-+- 000: no palette
+    //                                  001: ST/E compatible palette
+    //                                  010: TT compatible palette
+    //                                  011: Falcon compatible palette
+    //                                  100: VDI palette
     uint16_t flags = 0;
     if (*paletteBits) {
         if (*stCompatiblePalette)
-            flags |= 0b01;
+            flags |= 0b001;
         else if (*ttCompatiblePalette)
-            flags |= 0b10;
+            flags |= 0b010;
+        else if (*vdiCompatiblePalette)
+            flags |= 0b100;
         else
-            flags |= 0b11;
+            flags |= 0b011;
     }
 
     ofs.put(flags >> 8);
@@ -84,7 +87,14 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
 {
     std::vector<T> pal(paletteSize);
 
-    for (size_t i = 0; i < image.colorMapSize(); ++i) {
+    for (size_t entry = 0; entry < paletteSize; ++entry) {
+        // a VDI palette is ordered by pen, everything else by colour index
+        const size_t i = std::is_same_v<T, VdiPaletteEntry> ? vdi_color_index(entry, paletteSize) : entry;
+
+        // pens are not in colour index order, later ones may still have a colour
+        if (i >= image.colorMapSize())
+            continue;   // this one stays black
+
         const Color color = image.colorMap(i);
 
         constexpr size_t shift = QuantumDepth - 8;
@@ -93,26 +103,32 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
         const uint8_t g = (color.greenQuantum() >> shift) >> (8 - *paletteBits/3);
         const uint8_t b = (color.blueQuantum()  >> shift) >> (8 - *paletteBits/3);
 
-        if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
+        if constexpr (std::is_same_v<T, VdiPaletteEntry>) {
+            const unsigned int max = (1u << (*paletteBits/3)) - 1;
+
+            pal[entry].r = r * 1000 / max;
+            pal[entry].g = g * 1000 / max;
+            pal[entry].b = b * 1000 / max;
+        } else if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
             switch (*paletteBits) {
             case 24:
-                pal[i].r10 = r & 0x03;
-                pal[i].g10 = g & 0x03;
-                pal[i].b10 = b & 0x03;
+                pal[entry].r10 = r & 0x03;
+                pal[entry].g10 = g & 0x03;
+                pal[entry].b10 = b & 0x03;
                 [[fallthrough]];
             case 18:
                 // shift by 0 (18-bit) or 2 (24-bit) bits
-                pal[i].r765432 = r >> ((*paletteBits - 18)/3);
-                pal[i].g765432 = g >> ((*paletteBits - 18)/3);
-                pal[i].b765432 = b >> ((*paletteBits - 18)/3);
+                pal[entry].r765432 = r >> ((*paletteBits - 18)/3);
+                pal[entry].g765432 = g >> ((*paletteBits - 18)/3);
+                pal[entry].b765432 = b >> ((*paletteBits - 18)/3);
                 break;
             case 12:
             case 9:
                 // no need to handle the 18- vs. 24-bit difference
                 // as the bottom two bits are always zero
-                pal[i].r765432 = r << (6 - *paletteBits/3);
-                pal[i].g765432 = g << (6 - *paletteBits/3);
-                pal[i].b765432 = b << (6 - *paletteBits/3);
+                pal[entry].r765432 = r << (6 - *paletteBits/3);
+                pal[entry].g765432 = g << (6 - *paletteBits/3);
+                pal[entry].b765432 = b << (6 - *paletteBits/3);
                 break;
             default:
                 throw_oss<std::invalid_argument>(std::ostringstream()
@@ -124,9 +140,9 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
             case 12:
             case 9:
                 // shift by 1 (9-bit ST) or 0 (12-bit STE) bits
-                pal[i].r3210 = r << (4 - *paletteBits/3);
-                pal[i].g3210 = g << (4 - *paletteBits/3);
-                pal[i].b3210 = b << (4 - *paletteBits/3);
+                pal[entry].r3210 = r << (4 - *paletteBits/3);
+                pal[entry].g3210 = g << (4 - *paletteBits/3);
+                pal[entry].b3210 = b << (4 - *paletteBits/3);
                 break;
             default:
                 throw_oss<std::invalid_argument>(std::ostringstream()
@@ -136,15 +152,15 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
         } else if constexpr (std::is_same_v<T, StePaletteEntry>) {
             switch (*paletteBits) {
             case 12:
-                pal[i].r0 = r & 0x01;
-                pal[i].g0 = g & 0x01;
-                pal[i].b0 = b & 0x01;
+                pal[entry].r0 = r & 0x01;
+                pal[entry].g0 = g & 0x01;
+                pal[entry].b0 = b & 0x01;
                 [[fallthrough]];
             case 9:
                 // shift by 0 (9-bit ST) or 1 (12-bit STE) bits
-                pal[i].r321 = r >> ((*paletteBits - 9)/3);
-                pal[i].g321 = g >> ((*paletteBits - 9)/3);
-                pal[i].b321 = b >> ((*paletteBits - 9)/3);
+                pal[entry].r321 = r >> ((*paletteBits - 9)/3);
+                pal[entry].g321 = g >> ((*paletteBits - 9)/3);
+                pal[entry].b321 = b >> ((*paletteBits - 9)/3);
                 break;
             default:
                 throw_oss<std::invalid_argument>(std::ostringstream()
@@ -156,7 +172,12 @@ static void save_palette(std::ofstream& ofs, const Image& image, const size_t pa
     }
 
     for (const auto& pal_entry : pal) {
-        if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
+        if constexpr (std::is_same_v<T, VdiPaletteEntry>) {
+            for (const uint16_t component : { pal_entry.r, pal_entry.g, pal_entry.b }) {
+                ofs.put(component >> 8);    // MSB
+                ofs.put(component);         // LSB
+            }
+        } else if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
             ofs.put(pal_entry.wrapper.value >> 24); // MSB
             ofs.put(pal_entry.wrapper.value >> 16);
             ofs.put(pal_entry.wrapper.value >>  8);
@@ -371,6 +392,8 @@ int main(int argc, char* argv[])
                     save_palette<StePaletteEntry>(ofs, image, 1u << *bitsPerPixel);
                 else if (*ttCompatiblePalette)
                     save_palette<TtPaletteEntry>(ofs, image, 1u << *bitsPerPixel);
+                else if (*vdiCompatiblePalette)
+                    save_palette<VdiPaletteEntry>(ofs, image, 1u << *bitsPerPixel);
                 else
                     save_palette<FalconPaletteEntry>(ofs, image, 1u << *bitsPerPixel);
             }

@@ -35,6 +35,7 @@ typedef struct {
         uint16_t ste[16];
         uint16_t tt[256];
         uint32_t falcon[256];
+        uint16_t vdi[256][3];
     } palette;
     uint16_t    width;
     uint16_t    height;
