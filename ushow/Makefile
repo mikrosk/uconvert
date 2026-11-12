@@ -3,9 +3,9 @@ TARGET	:= ushow
 LIBCMINI ?= yes
 
 AS	:= vasmm68k_mot
-CC	:= m68k-atari-mint-gcc
+CC	:= m68k-atari-mintelf-gcc
 
-ASFLAGS	:= -quiet -Faout -opt-allbra
+ASFLAGS	:= -quiet -Felf -opt-allbra
 CFLAGS	:= -O2 -fomit-frame-pointer -Wall -std=c99
 LDFLAGS	:= -s
 #LDFLAGS := -g -Wl,--traditional-format

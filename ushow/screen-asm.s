@@ -15,19 +15,19 @@
 ; You should have received a copy of the GNU General Public License
 ; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-		xdef	_asm_screen_ste_save
-		xdef	_asm_screen_tt_save
-		xdef	_asm_screen_falcon_save
+		xdef	asm_screen_ste_save
+		xdef	asm_screen_tt_save
+		xdef	asm_screen_falcon_save
 
-		xdef	_asm_screen_ste_restore
-		xdef	_asm_screen_tt_restore
-		xdef	_asm_screen_falcon_restore
+		xdef	asm_screen_ste_restore
+		xdef	asm_screen_tt_restore
+		xdef	asm_screen_falcon_restore
 
-		xdef	_asm_screen_set_ste_palette
-		xdef	_asm_screen_set_tt_palette
-		xdef	_asm_screen_set_falcon_palette
+		xdef	asm_screen_set_ste_palette
+		xdef	asm_screen_set_tt_palette
+		xdef	asm_screen_set_falcon_palette
 
-		xdef	_asm_screen_set_vram
+		xdef	asm_screen_set_vram
 
 ; ------------------------------------------------------
 		section	text
@@ -35,7 +35,7 @@
 
 ; extern void asm_screen_ste_save(void);
 ;
-_asm_screen_ste_save:
+asm_screen_ste_save:
 		bsr	wait_vbl			; avoid flickering
 
 		lea	$ffff8240.w,a0
@@ -53,7 +53,7 @@ _asm_screen_ste_save:
 
 ; extern void asm_screen_tt_save(void);
 ;
-_asm_screen_tt_save:
+asm_screen_tt_save:
 		bsr	wait_vbl			; avoid flickering
 
 		lea	$ffff8400.w,a0
@@ -71,7 +71,7 @@ _asm_screen_tt_save:
 
 ; extern void asm_screen_falcon_save(void);
 ;
-_asm_screen_falcon_save:
+asm_screen_falcon_save:
 		movem.l	d2-d7/a2,-(sp)
 
 		bsr	wait_vbl			; avoid flickering
@@ -118,7 +118,7 @@ _asm_screen_falcon_save:
 
 ; extern void asm_screen_ste_restore(void);
 ;
-_asm_screen_ste_restore:
+asm_screen_ste_restore:
 		bsr	wait_vbl			; avoid flickering
 
 		lea	save_video,a1
@@ -136,7 +136,7 @@ _asm_screen_ste_restore:
 
 ; extern void asm_screen_tt_restore(void);
 ;
-_asm_screen_tt_restore:
+asm_screen_tt_restore:
 		bsr	wait_vbl			; avoid flickering
 
 		lea	save_video,a1
@@ -154,7 +154,7 @@ _asm_screen_tt_restore:
 
 ; extern void asm_screen_falcon_restore(void);
 ;
-_asm_screen_falcon_restore:
+asm_screen_falcon_restore:
 		movem.l	d2-d7/a2,-(sp)
 
 		bsr	wait_vbl			; avoid flickering
@@ -214,7 +214,7 @@ _asm_screen_falcon_restore:
 
 ; extern void asm_screen_set_ste_palette(const uint16_t* pPalette, uint16_t palette_size);
 ;
-_asm_screen_set_ste_palette:
+asm_screen_set_ste_palette:
 		movea.l	(4,sp),a0
 		move.w	(8+2,sp),d0			; 32-bit ABI
 		ble	.done
@@ -227,7 +227,7 @@ _asm_screen_set_ste_palette:
 
 ; extern void asm_screen_set_tt_palette(const uint16_t* pPalette, uint16_t palette_size);
 ;
-_asm_screen_set_tt_palette:
+asm_screen_set_tt_palette:
 		movea.l	(4,sp),a0
 		move.w	(8+2,sp),d0			; 32-bit ABI
 		ble	.done
@@ -240,7 +240,7 @@ _asm_screen_set_tt_palette:
 
 ; extern void asm_screen_set_falcon_palette(const uint32_t* pPalette, uint16_t palette_size);
 ;
-_asm_screen_set_falcon_palette:
+asm_screen_set_falcon_palette:
 		movea.l	(4,sp),a0
 		move.w	(8+2,sp),d0			; 32-bit ABI
 		ble	.done
@@ -253,7 +253,7 @@ _asm_screen_set_falcon_palette:
 
 ; extern void asm_screen_set_vram(const void* pScreen);
 ;
-_asm_screen_set_vram:
+asm_screen_set_vram:
 		move.l	(4,sp),d0
 
 		cmp.l	curr_vram,d0
