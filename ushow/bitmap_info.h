@@ -39,6 +39,11 @@ typedef struct {
     } palette;
     uint16_t    width;
     uint16_t    height;
+    // palette records per scanline (Falcon palette only): record r holds the colours of
+    // line_entries consecutive entries, in force from scanline r + 1 on, and the palette
+    // register of the first of them
+    uint16_t    line_entries;   // 0 if there are none
+    uint32_t*   line_records;   // height * (line_entries + 1) longs
 } BitmapInfo;
 
 // on failure 'error' is filled in and the result is not usable

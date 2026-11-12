@@ -5,6 +5,8 @@ c2p-asm.h
 c2p1x1_4.s
 c2p1x1_6.s
 c2p1x1_8.s
+linepal-asm.h
+linepal-asm.s
 load_bitmap.c
 load_bitmap.h
 palette_type.h
@@ -15,3 +17,5 @@ screen_info.h
 uimg.h
 ushow.c
 vdo.h
+watchdog-asm.h
+watchdog-asm.s

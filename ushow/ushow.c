@@ -29,9 +29,16 @@
 #include <mint/osbind.h>
 
 #include "bitmap_info.h"
+#include "linepal-asm.h"
 #include "load_bitmap.h"
 #include "screen-asm.h"
 #include "screen_info.h"
+#ifdef TEST
+#include "watchdog-asm.h"
+
+// every bitmap is shown for this many frames, then the next one; after the last one ushowt.ttp exits
+#define TEST_FRAMES 300
+#endif
 
 static struct {
     BitmapInfo bitmap_info;
@@ -45,16 +52,20 @@ static char error[256];
 static void print_error(const char* text)
 {
     fprintf(stderr, "%s\r\n", text);
+#ifndef TEST
     fprintf(stderr, "Press enter to exit.\r\n");
     getchar();
+#endif
     exit(EXIT_FAILURE);
 }
 
 static void print_help()
 {
     fprintf(stderr, "Usage: ushow.ttp <filename.ext> [<filename.ext>]...\r\n");
+#ifndef TEST
     fprintf(stderr, "Press enter to exit.\r\n");
     getchar();
+#endif
     exit(EXIT_FAILURE);
 }
 
@@ -77,6 +88,52 @@ static void set_vdi_palette(const BitmapInfo* bitmap_info, int16_t vdi_handle)
     for (int16_t pen = 0; pen < (1 << bitmap_info->bpp); ++pen)
         vs_color(vdi_handle, pen, (int16_t*)bitmap_info->palette.vdi[pen]);
 }
+
+// palette records per scanline being shown, i.e. their VBL handler installed
+static bool linepal_shown;
+
+static const char ikbd_mouse_off[] = { 0x12 };  // disable mouse
+static const char ikbd_mouse_on[]  = { 0x08 };  // relative mouse position reporting
+
+static void show_line_palette(const BitmapInfo* bitmap_info)
+{
+    // the VBL handler keeps the CPU at IPL 7 for most of every frame: a key press waits in
+    // the keyboard ACIA until the handler is done, the bytes of a mouse packet would overrun it
+    Ikbdws(sizeof(ikbd_mouse_off) - 1, ikbd_mouse_off);
+
+    // the new mode and screen settle, a mouse packet already on its way arrives
+    Vsync();
+
+    int32_t ssp = Super(0L);
+    asm_linepal_start(bitmap_info->palette.falcon, bitmap_info->line_records);
+    Super(ssp);
+
+    linepal_shown = true;
+}
+
+static void hide_line_palette(void)
+{
+    if (!linepal_shown)
+        return;
+
+    Supexec(asm_linepal_stop);
+    Ikbdws(sizeof(ikbd_mouse_on) - 1, ikbd_mouse_on);
+
+    linepal_shown = false;
+}
+
+#ifdef TEST
+// instead of waiting for a key: the next bitmap after TEST_FRAMES frames, ESC after the last one
+static uint8_t test_next_key(int page_index, int pages)
+{
+    for (int frame = 0; frame < TEST_FRAMES; ++frame) {
+        Vsync();
+        asm_watchdog_kick();
+    }
+
+    return page_index < pages - 1 ? 0x4d : 0x01;
+}
+#endif
 
 int main(int argc, char* argv[])
 {
@@ -180,7 +237,7 @@ int main(int argc, char* argv[])
                 pal_str = "TT";
                 break;
             case PaletteTypeFalcon:
-                pal_str = "Falcon";
+                pal_str = page[i].bitmap_info.line_entries ? "Falcon, per scanline" : "Falcon";
                 break;
             case PaletteTypeVDI:
                 pal_str = "VDI";
@@ -226,6 +283,10 @@ int main(int argc, char* argv[])
 
     //////////////////////////////////////////////////////////////////////////
 
+#ifdef TEST
+    Supexec(asm_watchdog_start);
+#endif
+
     // OS area
     {
         if (app_id != -1)
@@ -250,6 +311,9 @@ int main(int argc, char* argv[])
 
             if (prev_page_index == page_index && ch != 0xff)
                 continue;
+
+            // a VBL handler writing the palette goes before the mode or the palette changes
+            hide_line_palette();
 
             if (!page[page_index].screen_info.keep_screen) {
                 // Vsync() is needed for catching up raw palette access with (V)setScreen()
@@ -301,9 +365,18 @@ int main(int argc, char* argv[])
 
                 Super(ssp);
             }
+
+            if (page[page_index].bitmap_info.line_entries)
+                show_line_palette(&page[page_index].bitmap_info);
+#ifdef TEST
+        } while ((ch = test_next_key(page_index, argc-1)) != 0x01);
+#else
         // loop until ESC = 0x01 is pressed
         } while ((aes_present && (ch = ((evnt_keybd() >> 8) & 0xff)) != 0x01)
                  || (!aes_present && (ch = ((Crawcin() >> 16) & 0xff)) != 0x01));
+#endif
+
+        hide_line_palette();
 
         if (page[0].screen_info.keep_screen) {
             // the VDI remembers what vs_color() was told, so give it back its own
@@ -343,6 +416,10 @@ int main(int argc, char* argv[])
             break;
         }
     }
+
+#ifdef TEST
+    Supexec(asm_watchdog_stop);
+#endif
 
 exit_gem:
     if (vdi_handle != 0)

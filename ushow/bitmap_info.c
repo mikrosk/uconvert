@@ -87,5 +87,40 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val, char* error)
         fread(bitmap_info.palette.vdi, sizeof(bitmap_info.palette.vdi[0]), 1 << bitmap_info.bpp, f);
     }
 
+    if (file_header.flags & 0b1000) {
+        if (bitmap_info.palette_type != PaletteTypeFalcon || bitmap_info.bpp > 8) {
+            sprintf(error, "Palette records per scanline require a Falcon palette.");
+            return bitmap_info;
+        }
+
+        if (fread(&bitmap_info.line_entries, sizeof(bitmap_info.line_entries), 1, f) != 1) {
+            sprintf(error, "Read error.");
+            return bitmap_info;
+        }
+
+        const size_t record_longs = bitmap_info.line_entries + 1;
+        bitmap_info.line_records = (uint32_t*)malloc(bitmap_info.height * record_longs * sizeof(uint32_t));
+        if (!bitmap_info.line_records) {
+            sprintf(error, "Not enough RAM for the palette records.");
+            return bitmap_info;
+        }
+
+        if (fread(bitmap_info.line_records, record_longs * sizeof(uint32_t), bitmap_info.height, f) != bitmap_info.height) {
+            sprintf(error, "Read error.");
+            return bitmap_info;
+        }
+
+        // the display writes the colours wherever a record says
+        for (size_t r = 0; r < bitmap_info.height; ++r) {
+            const uint32_t reg = bitmap_info.line_records[r * record_longs + bitmap_info.line_entries];
+
+            if (reg < 0xffff9800 || (reg & 3) != 0
+                    || (reg - 0xffff9800) / 4 + bitmap_info.line_entries > (1u << bitmap_info.bpp)) {
+                sprintf(error, "Invalid palette register in the record of scanline %u.", (unsigned int)r);
+                return bitmap_info;
+            }
+        }
+    }
+
     return bitmap_info;
 }

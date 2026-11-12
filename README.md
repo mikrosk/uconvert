@@ -84,7 +84,7 @@ Store the palette the way `vq_color()` returns it: three 16-bit words per entry,
 ### `-linepal <num>`
 Rewrite `<num>` palette entries after every scanline, `0` (default) means a single palette for the whole bitmap. Requires `-bpp 8`, bitplanes and an 18-bit Falcon palette (`-pal 18`); the default extension is `.fp8`.
 
-The bitmap starts with a full palette on scanline 0, after every scanline a run of `<num>` consecutive entries gets new colours (the runs taken in turn: entries `0..`, `<num>..`, `2*<num>..` and so on, the last one ending at entry 255, then from `0` again). The Falcon can rewrite 8 entries in the horizontal blank of its 640x480 VGA mode, so `-linepal 8` gives a picture of about 3,000 - 4,000 colours.
+The bitmap starts with a full palette on scanline 0, after every scanline a run of `<num>` consecutive entries gets new colours (the runs taken in turn: entries `0..`, `<num>..`, `2*<num>..` and so on, the last one ending at entry 255, then from `0` again). The Falcon can rewrite 8 entries in the horizontal blank of its 640x480 VGA mode, so `-linepal 8` gives a picture of about 3,000 - 4,000 colours; ushow shows it on a Falcon with a VGA monitor, 640x480 only.
 
 The colours are chosen by uConvert's own optimiser, not by GraphicsMagick's quantisation. With `-dither` it optimises the picture as the eye sees it (dithering), without it every pixel is as close to the original as possible. A 640x480 bitmap takes about 70 seconds with the default `-effort`.
 

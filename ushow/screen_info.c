@@ -126,6 +126,19 @@ ScreenInfo get_screen_info(const BitmapInfo* bitmap_info, const VdoValue vdo_val
         bool supervidel = Getcookie(C_SupV, NULL) == C_FOUND && VgetMonitor() == MON_VGA;
         bool mono_monitor = VgetMonitor() == MON_MONO;
 
+        if (bitmap_info->line_entries) {
+            // palette records per scanline: their display routine is made for this mode only
+            if (VgetMonitor() == MON_VGA && bitmap_info->bpp == 8 && bitmap_info->bpc == 0
+                    && bitmap_info->width == 640 && bitmap_info->height == 480 && bitmap_info->line_entries == 8) {
+                screen_info.width  = 640;
+                screen_info.height = 480;
+                screen_info.bpp    = 8;
+                screen_info.mode   = VGA | COL80 | BPS8;
+            }
+
+            return screen_info;
+        }
+
         switch (bitmap_info->bpp) {
         case 1:
             if (bitmap_info->bpc <= 0) {
