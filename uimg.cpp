@@ -29,6 +29,29 @@
 #include "helpers.h"
 #include "palette.h"
 
+static uint32_t read_long(std::ifstream& ifs)
+{
+    uint32_t value = 0;
+    for (int i = 0; i < 4; ++i) {
+        value <<= 8;
+        value |= ifs.get();
+    }
+    return value;
+}
+
+static Magick::Color falcon_color(const uint32_t value)
+{
+    FalconPaletteEntry palEntry = {};
+    palEntry.wrapper.value = value;
+
+    Magick::Color color;
+    constexpr size_t shift = QuantumDepth - 8;  // 8 bits per channel
+    color.redQuantum(   ((palEntry.r765432 << 2) | palEntry.r10) << shift );
+    color.greenQuantum( ((palEntry.g765432 << 2) | palEntry.g10) << shift );
+    color.blueQuantum(  ((palEntry.b765432 << 2) | palEntry.b10) << shift );
+    return color;
+}
+
 bool is_uimg(const std::string& filePath)
 {
     std::ifstream ifs(filePath, std::ifstream::binary);
@@ -70,6 +93,15 @@ Magick::Image load_uimg(const std::string& filePath)
 
     Magick::Image image({width, height}, {0, 0, 0});
 
+    // palette records per scanline: record r holds the colours of entriesPerScanline consecutive
+    // entries, in force from scanline r + 1 on, and the palette register of the first of them
+    const bool linePalette = fileHeader.flags & 0b1000;
+    size_t entriesPerScanline = 0;
+    std::vector<uint32_t> records;
+
+    if (linePalette && (fileHeader.bitsPerPixel > 8 || (fileHeader.flags & 0b111) != 0b011))
+        throw std::invalid_argument("Palette records per scanline require a Falcon palette.");
+
     if (fileHeader.bitsPerPixel <= 8) {
         image.classType(Magick::PseudoClass);
         image.type(Magick::PaletteType);
@@ -106,22 +138,10 @@ Magick::Image load_uimg(const std::string& filePath)
                 color.blueQuantum(  palEntry.b3210 << shift );
             } break;
 
-            case 0b011: {
+            case 0b011:
                 // Falcon compatible palette
-                FalconPaletteEntry palEntry = {};
-                palEntry.wrapper.value |= ifs.get();
-                palEntry.wrapper.value <<= 8;
-                palEntry.wrapper.value |= ifs.get();
-                palEntry.wrapper.value <<= 8;
-                palEntry.wrapper.value |= ifs.get();
-                palEntry.wrapper.value <<= 8;
-                palEntry.wrapper.value |= ifs.get();
-
-                constexpr size_t shift = QuantumDepth - 8;  // 8 bits per channel
-                color.redQuantum(   ((palEntry.r765432 << 2) | palEntry.r10) << shift );
-                color.greenQuantum( ((palEntry.g765432 << 2) | palEntry.g10) << shift );
-                color.blueQuantum(  ((palEntry.b765432 << 2) | palEntry.b10) << shift );
-            } break;
+                color = falcon_color(read_long(ifs));
+                break;
 
             case 0b100: {
                 // VDI palette, three 0-1000 words per pen
@@ -145,6 +165,26 @@ Magick::Image load_uimg(const std::string& filePath)
             // a VDI palette is stored by pen, everything else by colour index
             image.colorMap((fileHeader.flags & 0b111) == 0b100
                     ? vdi_color_index(i, image.colorMapSize()) : i, color);
+        }
+
+        if (linePalette) {
+            entriesPerScanline  = ifs.get() << 8;
+            entriesPerScanline |= ifs.get();
+
+            records.resize(height * (entriesPerScanline + 1));
+            for (uint32_t& value : records)
+                value = read_long(ifs);
+
+            for (size_t r = 0; r < height; ++r) {
+                const uint32_t reg = records[r * (entriesPerScanline + 1) + entriesPerScanline];
+
+                if (reg < 0xffff9800 || reg % 4 != 0
+                        || (reg - 0xffff9800) / 4 + entriesPerScanline > image.colorMapSize()) {
+                    throw_oss<std::invalid_argument>(std::ostringstream()
+                        << "Invalid palette register in the record of scanline " << r << "."
+                    );
+                }
+            }
         }
     } else {
         image.classType(Magick::DirectClass);
@@ -230,8 +270,34 @@ Magick::Image load_uimg(const std::string& filePath)
         }
     }
 
-    // prepare pixel packets for possible palette -> chunky conversion
-    if (fileHeader.bitsPerPixel <= 8) {
+    if (linePalette) {
+        // a colour map can't change from scanline to scanline, so the bitmap becomes true colour
+        // with every scanline in the colours the palette registers hold while it is displayed
+        image.getPixels(0, 0, image.columns(), image.rows());
+        const Magick::IndexPacket* pIndexes = image.getIndexes();
+        const std::vector<Magick::IndexPacket> indexes(pIndexes, pIndexes + image.columns() * image.rows());
+
+        std::vector<Magick::Color> palette(image.colorMapSize());
+        for (size_t i = 0; i < palette.size(); ++i)
+            palette[i] = image.colorMap(i);
+
+        image.classType(Magick::DirectClass);
+        image.type(Magick::TrueColorType);
+
+        Magick::PixelPacket* pPixels = image.getPixels(0, 0, image.columns(), image.rows());
+
+        for (size_t y = 0; y < height; ++y) {
+            for (size_t x = 0; x < width; ++x)
+                pPixels[y * width + x] = palette[indexes[y * width + x]];
+
+            const uint32_t* record = &records[y * (entriesPerScanline + 1)];
+            const size_t firstEntry = (record[entriesPerScanline] - 0xffff9800) / 4;
+
+            for (size_t i = 0; i < entriesPerScanline; ++i)
+                palette[firstEntry + i] = falcon_color(record[i]);
+        }
+    } else if (fileHeader.bitsPerPixel <= 8) {
+        // prepare pixel packets for possible palette -> chunky conversion
         Magick::PixelPacket* pPixels = image.getPixels(0, 0, image.columns(), image.rows());
         const Magick::IndexPacket* pIndexes = image.getIndexes();
 

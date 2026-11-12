@@ -21,6 +21,7 @@
 #include <GraphicsMagick/Magick++.h>
 using namespace Magick;
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -33,6 +34,7 @@ using namespace Magick;
 #include <vector>
 
 #include "args.h"
+#include "fp8.h"
 #include "helpers.h"
 #include "palette.h"
 #include "version.h"
@@ -46,12 +48,13 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
     ofs.put(UIMG_VERSION >> 8);
     ofs.put(UIMG_VERSION & 0xff);
     // flags: bit 15-8 7 6 5 4 3 2 1 0
-    //                           | | |
-    //                           +-+-+- 000: no palette
-    //                                  001: ST/E compatible palette
-    //                                  010: TT compatible palette
-    //                                  011: Falcon compatible palette
-    //                                  100: VDI palette
+    //                         | | | |
+    //                         | +-+-+- 000: no palette
+    //                         |        001: ST/E compatible palette
+    //                         |        010: TT compatible palette
+    //                         |        011: Falcon compatible palette
+    //                         |        100: VDI palette
+    //                         +------- 1: palette records per scanline follow the palette
     uint16_t flags = 0;
     if (*paletteBits) {
         if (*stCompatiblePalette)
@@ -63,6 +66,8 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
         else
             flags |= 0b011;
     }
+    if (*linePaletteEntries)
+        flags |= 0b1000;
 
     ofs.put(flags >> 8);
     ofs.put(flags);
@@ -78,6 +83,8 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
     ofs.put(height);
 
     // palette (st(e)/tt/falcon; if present)
+
+    // entries per scanline and palette records (if flagged)
 
     // bitmap data (if present)
 }
@@ -196,13 +203,10 @@ static void save_buffer(std::ofstream& ofs, const std::vector<T>& buffer)
     ofs.write((char*)buffer.data(), sizeof_vector(buffer));
 }
 
-static void c2p(std::vector<uint8_t>& buffer, const Image& image)
+template<typename T>
+static void c2p(std::vector<uint8_t>& buffer, const T* pIndexPackets, const size_t pixels)
 {
-    // unfortunately, we really need to call this one even if it's useless
-    image.getConstPixels(0, 0, image.columns(), image.rows());
-    const IndexPacket* pIndexPackets = image.getConstIndexes();
-
-    for (const IndexPacket* pIndexPacketsEnd = pIndexPackets + image.columns() * image.rows();
+    for (const T* pIndexPacketsEnd = pIndexPackets + pixels;
          pIndexPackets != pIndexPacketsEnd; pIndexPackets += 16)
     {
         std::vector<uint16_t> planes(*bitsPerPixel); // 16 pixels = 16 bits x bit depth
@@ -220,6 +224,118 @@ static void c2p(std::vector<uint8_t>& buffer, const Image& image)
             buffer.push_back(planes[i]);         // LSB
         }
     }
+}
+
+static void c2p(std::vector<uint8_t>& buffer, const Image& image)
+{
+    // unfortunately, we really need to call this one even if it's useless
+    image.getConstPixels(0, 0, image.columns(), image.rows());
+    c2p(buffer, image.getConstIndexes(), image.columns() * image.rows());
+}
+
+static void save_long(std::ofstream& ofs, const uint32_t value)
+{
+    ofs.put(value >> 24);   // MSB
+    ofs.put(value >> 16);
+    ofs.put(value >>  8);
+    ofs.put(value);         // LSB
+}
+
+// R, G, B as 6-bit levels
+static uint32_t falcon_palette_entry(const uint8_t* levels)
+{
+    FalconPaletteEntry palEntry = {};
+    palEntry.r765432 = levels[0];
+    palEntry.g765432 = levels[1];
+    palEntry.b765432 = levels[2];
+    return palEntry.wrapper.value;
+}
+
+// A palette for every scanline: the full palette in force on scanline 0, then
+// after every scanline a run of consecutive entries gets new colours.
+static void save_line_palette_uimg(const std::string& outputFilename, const Image& image)
+{
+    const int width  = image.columns();
+    const int height = image.rows();
+
+    if (width % 16 != 0)
+        throw std::runtime_error("Width must be divisible by 16.");
+
+    // record r is written after scanline r, so the first of them goes to scanline 1
+    if (height < 2)
+        throw std::runtime_error("'-linepal' requires at least 2 scanlines.");
+
+    const fp8_params params = { width, height, 1 << *bitsPerPixel, *linePaletteEntries, *effort, *dither, 1 };
+    const size_t entriesPerScanline = params.per_line;
+
+    // the conversion picks the colours itself, from the 8-bit RGB picture
+    std::vector<uint8_t> rgb;
+    rgb.reserve(static_cast<size_t>(width) * height * 3);
+
+    constexpr size_t shift = QuantumDepth - 8;
+    const PixelPacket* pPixelPackets = image.getConstPixels(0, 0, width, height);
+    for (const PixelPacket* pPixelPacketsEnd = pPixelPackets + width * height;
+         pPixelPackets != pPixelPacketsEnd; pPixelPackets++) {
+        rgb.push_back(pPixelPackets->red   >> shift);
+        rgb.push_back(pPixelPackets->green >> shift);
+        rgb.push_back(pPixelPackets->blue  >> shift);
+    }
+
+    std::cout << "Converting to " << params.entries << " colours, " << entriesPerScanline
+              << " of them rewritten after every scanline." << std::endl;
+
+    std::vector<uint8_t>  pix(static_cast<size_t>(width) * height);
+    std::vector<uint8_t>  pal(params.entries * 3);
+    std::vector<uint8_t>  rec((height - 1) * entriesPerScanline * 3);
+    std::vector<uint16_t> first(height - 1);
+
+    if (fp8_convert(&params, rgb.data(), pix.data(), pal.data(), rec.data(), first.data()) != 0)
+        throw std::runtime_error("Per scanline palette conversion failed.");
+
+    std::ofstream ofs(outputFilename, std::ofstream::binary);
+    if (!ofs)
+        throw std::runtime_error("Opening destination file failed.");
+
+    save_header(ofs, width, height);
+
+    for (int entry = 0; entry < params.entries; ++entry)
+        save_long(ofs, falcon_palette_entry(&pal[entry * 3]));
+
+    ofs.put(entriesPerScanline >> 8);
+    ofs.put(entriesPerScanline);
+
+    // the colours in the palette registers while the display goes down the scanlines
+    std::vector<uint8_t> current(pal);
+
+    for (int r = 0; r < height; ++r) {
+        size_t firstEntry;
+
+        if (r < height - 1) {
+            firstEntry = first[r];
+            std::copy_n(&rec[r * entriesPerScanline * 3], entriesPerScanline * 3, &current[firstEntry * 3]);
+        } else {
+            // there is no next scanline; the run which would come next in turn gets the colours it
+            // already has, so that a display routine writes the same kind of record after every scanline
+            firstEntry = first[r - 1] + entriesPerScanline;
+            if (firstEntry == static_cast<size_t>(params.entries))
+                firstEntry = 0;
+            else if (firstEntry + entriesPerScanline > static_cast<size_t>(params.entries))
+                firstEntry = params.entries - entriesPerScanline;   // the last run ends at the last entry
+        }
+
+        for (size_t entry = firstEntry; entry < firstEntry + entriesPerScanline; ++entry)
+            save_long(ofs, falcon_palette_entry(&current[entry * 3]));
+
+        // the palette register of the first entry
+        save_long(ofs, 0xffff9800 + 4 * firstEntry);
+    }
+
+    std::vector<uint8_t> atariImage;
+    atariImage.reserve(pix.size() * *bitsPerPixel / 8);
+    c2p(atariImage, pix.data(), pix.size());
+    save_buffer(ofs, atariImage);
+
+    ofs.close();
 }
 
 template<typename T>
@@ -351,7 +467,9 @@ int main(int argc, char* argv[])
                 std::cout << "Aspect ratio changed; old: " << old_ratio << ", new: " << new_ratio << std::endl;
         }
 
-        if (saving_uimg) {
+        if (saving_uimg && *linePaletteEntries) {
+            save_line_palette_uimg(outputFilename, image);
+        } else if (saving_uimg) {
             if (*bitsPerPixel <= 8) {
                 if (image.classType() != PseudoClass || image.colorMapSize() > (1u << *bitsPerPixel)) {
                     const size_t colors = image.classType() == PseudoClass

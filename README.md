@@ -81,6 +81,16 @@ Store 9- and 12-bit palette in 16-bit TT palette format (`0000 RRRR GGGG BBBB`).
 ### `-vdi`
 Store the palette the way `vq_color()` returns it: three 16-bit words per entry, each `0` - `1000`. VDI pen order instead of by colour index.
 
+### `-linepal <num>`
+Rewrite `<num>` palette entries after every scanline, `0` (default) means a single palette for the whole bitmap. Requires `-bpp 8`, bitplanes and an 18-bit Falcon palette (`-pal 18`); the default extension is `.fp8`.
+
+The bitmap starts with a full palette on scanline 0, after every scanline a run of `<num>` consecutive entries gets new colours (the runs taken in turn: entries `0..`, `<num>..`, `2*<num>..` and so on, the last one ending at entry 255, then from `0` again). The Falcon can rewrite 8 entries in the horizontal blank of its 640x480 VGA mode, so `-linepal 8` gives a picture of about 3,000 - 4,000 colours.
+
+The colours are chosen by uConvert's own optimiser, not by GraphicsMagick's quantisation. With `-dither` it optimises the picture as the eye sees it (dithering), without it every pixel is as close to the original as possible. A 640x480 bitmap takes about 70 seconds with the default `-effort`.
+
+### `-effort <num>`
+How long `-linepal` optimises the palettes, `0` - `9` (default `3`). Higher values take longer.
+
 ### `-out <filename.ext>`
 Export source bitmap as `<filename.ext>`. If `<ext>` is the one the Atari switches would produce anyway, an Atari bitmap is written, otherwise the format is taken from `<ext>` - all popular formats like GIF, JPEG, PNG, WEBP, ... [whatever GraphicsMagick supports](http://www.graphicsmagick.org/formats.html); Atari switches are then ignored (but still validated) and only resizing/dithering is applied. Useful for reading uConvert's native Atari formats and displaying on the host platform but usable as a generic bitmap converter, too.
 
@@ -94,12 +104,13 @@ char        id[4];
 // 0xAABB (AA = major, BB = minor, 2 bytes)
 uint16_t    version;
 // flags: bit 15-8 7 6 5 4 3 2 1 0
-//                           | | |
-//                           +-+-+- 000: no palette
-//                                  001: ST/E compatible palette
-//                                  010: TT compatible palette
-//                                  011: Falcon compatible palette
-//                                  100: VDI palette
+//                         | | | |
+//                         | +-+-+- 000: no palette
+//                         |        001: ST/E compatible palette
+//                         |        010: TT compatible palette
+//                         |        011: Falcon compatible palette
+//                         |        100: VDI palette
+//                         +------- 1: palette records per scanline follow the palette
 uint16_t    flags;
 // 1, 2, 4, 6, 8, 16, 24, 32
 uint8_t     bitsPerPixel;
@@ -119,6 +130,16 @@ union {
   uint16_t vdiPaletteEntry[3];
 } Palette[1<<bitsPerPixel];
 
+// present only if flags & 0b1000 (Falcon palette only); Palette is the one of scanline 0
+uint16_t    entriesPerScanline;
+// record r is written after scanline r and is in force from scanline r + 1 on;
+// the last one rewrites its entries with the colours they already have
+struct {
+  uint32_t falconPaletteEntry[entriesPerScanline];
+  // palette register of the first entry: 0xFFFF9800 + 4 * firstEntry
+  uint32_t paletteRegister;
+} Record[height];
+
 // present only if neither width nor height is 0
 char* bitmapData;
 ```
@@ -130,6 +151,7 @@ For example of UIMG handling, see [ushow](https://github.com/mikrosk/uconvert/tr
 - `uconvert -width 320 -height 200 -bpp 4 -pal 12 test.png` outputs `test.bp4` in native ST Low format using STE's 12-bit palette
 - `uconvert -width 320 -height 240 -bpp 8 -bpc 1 -pal 24 test.png` outputs `test.c08` in 8-bit (SuperVidel compatible) chunky format using SuperVidel's 24-bit palette
 - `uconvert -width 320 -height 240 -filter -bpp 16 test.png` outputs `test.c16` in 16-bit (Falcon compatible) chunky format with smoothened edges
+- `uconvert -width 640 -height 480 -bpp 8 -pal 18 -linepal 8 -dither test.png` outputs `test.fp8` in 8 bitplanes with 8 of its 256 palette entries rewritten after every scanline, for a Falcon with a VGA monitor
 - `uconvert -width 640 -height 400 -out test.gif test.bp4` outputs `test.gif` in twice as big dimensions as the original `test.bp4` from above
 - `uconvert -out test.bp8 test.bp4` outputs `test.bp8` with `test.bp4` stored in 8 bitplanes
 - asm-generated bitmap (save as `vasm -Fbin -o img.c04 img.asm`):
