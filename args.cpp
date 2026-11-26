@@ -44,6 +44,7 @@ std::optional<int16_t>  paletteBits;          // 9, 12, 18, 24 or 0 (if bitsPerP
 std::optional<bool>     stCompatiblePalette;  // if true, use ST/E palette registers
 std::optional<bool>     ttCompatiblePalette;  // if true, use TT palette registers
 std::optional<bool>     vdiCompatiblePalette; // if true, store the palette the way vq_color() returns it
+std::optional<int16_t>  lineColors;           // number of palette entries changed on every line, 0 if none
 // Possible TODOs:
 //  - grayscale
 //  - cat picture.gif | giftopnm | pnmquant 16 | ppmtoneo > picture.neo (call Netpbm instead of using GraphicsMagick)
@@ -62,13 +63,15 @@ constexpr int16_t      DEFAULT_PALETTE_BITS  = 24;
 constexpr bool        DEFAULT_ST_COMPATIBLE  = false;
 constexpr bool        DEFAULT_TT_COMPATIBLE  = false;
 constexpr bool       DEFAULT_VDI_COMPATIBLE  = false;
+constexpr int16_t        DEFAULT_LINE_COLORS = 0;
 
 std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::optional<int16_t>&>> allowedValues = {
     { "-bpp",    { { 1, 2, 4, 6, 8, 16, 24, 32 },    bitsPerPixel  } },
     { "-bpc",    { { -1, 0, 1, 2, 3, 4 },            bytesPerChunk } },
     { "-pal",    { { 0, 9, 12, 18, 24 },             paletteBits   } },
     { "-width",  { { },                              bitmapWidth   } },
-    { "-height", { { },                              bitmapHeight  } }
+    { "-height", { { },                              bitmapHeight  } },
+    { "-linecol", { { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }, lineColors  } }
 };
 
 std::unordered_map<std::string, std::optional<bool>&> allowedFlags = {
@@ -97,6 +100,7 @@ static void print_help(const char* name)
         << "  -st              output palette in ST/E-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_ST_COMPATIBLE << "]" << std::endl
         << "  -tt              output palette in TT-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_TT_COMPATIBLE << "]" << std::endl
         << "  -vdi             output palette in VDI-specific format [default " << std::boolalpha << DEFAULT_VDI_COMPATIBLE << "]" << std::endl
+        << "  -linecol <num>   number of consecutive palette entries (0 - 10) rewritten before every line (only Falcon palette and bpp 4, 8) [default " << DEFAULT_LINE_COLORS << "]" << std::endl
         << "  -out <filename>  output bitmap as <filename> (the format is taken from its extension)"  << std::endl;
 
     throw std::invalid_argument(oss.str());
@@ -163,6 +167,9 @@ std::string parse_arguments(int argc, char* argv[])
 
             if (!vdiCompatiblePalette.has_value())
                 vdiCompatiblePalette = DEFAULT_VDI_COMPATIBLE;
+
+            if (!lineColors.has_value())
+                lineColors = DEFAULT_LINE_COLORS;
 
             if (!bitsPerPixel.has_value()) {
                 if (*stCompatiblePalette)
@@ -236,6 +243,20 @@ std::string parse_arguments(int argc, char* argv[])
 
             if (*bytesPerChunk == -1 && *bitsPerPixel == 6)
                 throw std::invalid_argument("-bpp 6 requires bpc >= 0.");
+
+            if (*lineColors) {
+                if (*bitsPerPixel != 4 && *bitsPerPixel != 8)
+                    throw std::invalid_argument("'-linecol' requires 4 or 8 bits per pixel.");
+
+                if (*stCompatiblePalette || *ttCompatiblePalette || *vdiCompatiblePalette || !*paletteBits)
+                    throw std::invalid_argument("'-linecol' requires a Falcon palette.");
+
+                if (!has_bitmap_data())
+                    throw std::invalid_argument("'-linecol' requires a bitmap.");
+
+                if (*lineColors > (1 << *bitsPerPixel))
+                    throw std::invalid_argument("'-linecol' can't exceed the number of palette entries.");
+            }
 
             if (outputFilename.empty())
                 outputFilename = arg.substr(0, arg.find_last_of('.')) + get_uimg_filename_ext();

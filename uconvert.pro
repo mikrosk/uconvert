@@ -5,9 +5,11 @@ CONFIG -= qt
 
 SOURCES += \
         args.cpp \
+        palopt.cpp \
         uconvert.cpp \
         uimg.cpp
 
+QMAKE_CXXFLAGS += -fno-strict-aliasing
 #QMAKE_CXXFLAGS += $$system(GraphicsMagick++-config --cppflags --cxxflags)
 QMAKE_CXXFLAGS += $$system(GraphicsMagick++-config --cppflags)
 QMAKE_LFLAGS   += $$system(GraphicsMagick++-config --ldflags)
@@ -17,6 +19,7 @@ HEADERS += \
     args.h \
     bitfield.h \
     helpers.h \
+    palopt.h \
     palette.h \
     uimg.h \
     version.h

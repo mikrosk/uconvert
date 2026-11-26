@@ -34,17 +34,19 @@ using namespace Magick;
 
 #include "args.h"
 #include "helpers.h"
+#include "palopt.h"
 #include "palette.h"
 #include "version.h"
 #include "uimg.h"
 
 // all values must be big endian
-static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t height)
+static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t height, const uint8_t changedColorsPerLine)
 {
     // ID
     ofs.write("UIMG", 4);
-    ofs.put(UIMG_VERSION >> 8);
-    ofs.put(UIMG_VERSION & 0xff);
+    const uint16_t version = changedColorsPerLine ? UIMG_MULTILINE_VERSION : UIMG_VERSION;
+    ofs.put(version >> 8);
+    ofs.put(version & 0xff);
     // flags: bit 15-8 7 6 5 4 3 2 1 0
     //                           | | |
     //                           +-+-+- 000: no palette
@@ -52,6 +54,9 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
     //                                  010: TT compatible palette
     //                                  011: Falcon compatible palette
     //                                  100: VDI palette
+    //                                  101: ST/E compatible palette, multiline
+    //                                  110: TT compatible palette, multiline
+    //                                  111: Falcon compatible palette, multiline
     uint16_t flags = 0;
     if (*paletteBits) {
         if (*stCompatiblePalette)
@@ -62,6 +67,9 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
             flags |= 0b100;
         else
             flags |= 0b011;
+
+        if (changedColorsPerLine)
+            flags |= 0b100;
     }
 
     ofs.put(flags >> 8);
@@ -70,6 +78,12 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
     ofs.put(*bitsPerPixel);
     // bytes per chunk (0 if planar words, -1 if packed)
     ofs.put(*bytesPerChunk);
+    // palette entries changed on every line and a pad byte keeping
+    // the rest word aligned (multiline palette only)
+    if (changedColorsPerLine) {
+        ofs.put(changedColorsPerLine);
+        ofs.put(0);
+    }
 
     // width and height, 0 if there is no bitmap data
     ofs.put(width >> 8);
@@ -79,115 +93,189 @@ static void save_header(std::ofstream& ofs, const uint16_t width, const uint16_t
 
     // palette (st(e)/tt/falcon; if present)
 
+    // palette blocks of the lines (multiline palette only)
+
     // bitmap data (if present)
+}
+
+template<typename T>
+static T make_palette_entry(const Color& color)
+{
+    T palEntry = {};
+
+    constexpr size_t shift = QuantumDepth - 8;
+
+    const uint8_t r = (color.redQuantum()   >> shift) >> (8 - *paletteBits/3);
+    const uint8_t g = (color.greenQuantum() >> shift) >> (8 - *paletteBits/3);
+    const uint8_t b = (color.blueQuantum()  >> shift) >> (8 - *paletteBits/3);
+
+    if constexpr (std::is_same_v<T, VdiPaletteEntry>) {
+        const unsigned int max = (1u << (*paletteBits/3)) - 1;
+
+        palEntry.r = r * 1000 / max;
+        palEntry.g = g * 1000 / max;
+        palEntry.b = b * 1000 / max;
+    } else if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
+        switch (*paletteBits) {
+        case 24:
+            palEntry.r10 = r & 0x03;
+            palEntry.g10 = g & 0x03;
+            palEntry.b10 = b & 0x03;
+            [[fallthrough]];
+        case 18:
+            // shift by 0 (18-bit) or 2 (24-bit) bits
+            palEntry.r765432 = r >> ((*paletteBits - 18)/3);
+            palEntry.g765432 = g >> ((*paletteBits - 18)/3);
+            palEntry.b765432 = b >> ((*paletteBits - 18)/3);
+            break;
+        case 12:
+        case 9:
+            // no need to handle the 18- vs. 24-bit difference
+            // as the bottom two bits are always zero
+            palEntry.r765432 = r << (6 - *paletteBits/3);
+            palEntry.g765432 = g << (6 - *paletteBits/3);
+            palEntry.b765432 = b << (6 - *paletteBits/3);
+            break;
+        default:
+            throw_oss<std::invalid_argument>(std::ostringstream()
+                << "Unexpected number of palette bits: " << *paletteBits
+            );
+        }
+    } else if constexpr (std::is_same_v<T, TtPaletteEntry>) {
+        switch (*paletteBits) {
+        case 12:
+        case 9:
+            // shift by 1 (9-bit ST) or 0 (12-bit STE) bits
+            palEntry.r3210 = r << (4 - *paletteBits/3);
+            palEntry.g3210 = g << (4 - *paletteBits/3);
+            palEntry.b3210 = b << (4 - *paletteBits/3);
+            break;
+        default:
+            throw_oss<std::invalid_argument>(std::ostringstream()
+                << "Unexpected number of palette bits: " << *paletteBits
+            );
+        }
+    } else if constexpr (std::is_same_v<T, StePaletteEntry>) {
+        switch (*paletteBits) {
+        case 12:
+            palEntry.r0 = r & 0x01;
+            palEntry.g0 = g & 0x01;
+            palEntry.b0 = b & 0x01;
+            [[fallthrough]];
+        case 9:
+            // shift by 0 (9-bit ST) or 1 (12-bit STE) bits
+            palEntry.r321 = r >> ((*paletteBits - 9)/3);
+            palEntry.g321 = g >> ((*paletteBits - 9)/3);
+            palEntry.b321 = b >> ((*paletteBits - 9)/3);
+            break;
+        default:
+            throw_oss<std::invalid_argument>(std::ostringstream()
+                << "Unexpected number of palette bits: " << *paletteBits
+            );
+        }
+    } else
+        static_assert(bool_value<false, T>::value, "Unsupported palette type");
+
+    return palEntry;
+}
+
+template<typename T>
+static void save_palette_entry(std::ofstream& ofs, const T& palEntry)
+{
+    if constexpr (std::is_same_v<T, VdiPaletteEntry>) {
+        for (const uint16_t component : { palEntry.r, palEntry.g, palEntry.b }) {
+            ofs.put(component >> 8);    // MSB
+            ofs.put(component);         // LSB
+        }
+    } else if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
+        ofs.put(palEntry.wrapper.value >> 24);  // MSB
+        ofs.put(palEntry.wrapper.value >> 16);
+        ofs.put(palEntry.wrapper.value >>  8);
+        ofs.put(palEntry.wrapper.value);    // LSB
+    } else if constexpr (std::is_same_v<T, TtPaletteEntry> || std::is_same_v<T, StePaletteEntry>) {
+        ofs.put(palEntry.wrapper.value >> 8);   // MSB
+        ofs.put(palEntry.wrapper.value);    // LSB
+    } else
+        static_assert(bool_value<false, T>::value, "Unsupported palette type");
 }
 
 template<typename T>
 static void save_palette(std::ofstream& ofs, const Image& image, const size_t paletteSize)
 {
-    std::vector<T> pal(paletteSize);
-
     for (size_t entry = 0; entry < paletteSize; ++entry) {
         // a VDI palette is ordered by pen, everything else by colour index
         const size_t i = std::is_same_v<T, VdiPaletteEntry> ? vdi_color_index(entry, paletteSize) : entry;
 
-        // pens are not in colour index order, later ones may still have a colour
-        if (i >= image.colorMapSize())
-            continue;   // this one stays black
+        // pens are not in colour index order, later ones may still have a colour;
+        // this one stays black
+        save_palette_entry(ofs, i < image.colorMapSize() ? make_palette_entry<T>(image.colorMap(i)) : T{});
+    }
+}
 
-        const Color color = image.colorMap(i);
+// bits per colour channel the palette optimiser works with
+static int level_bits()
+{
+    return *paletteBits ? *paletteBits/3 : 8;
+}
 
-        constexpr size_t shift = QuantumDepth - 8;
+// a colour given as palette levels (0 .. (1 << level_bits()) - 1 per channel)
+static Color levels_to_color(const Levels& levels)
+{
+    // the inverse of make_palette_entry()'s conversion
+    const unsigned int shift = QuantumDepth - level_bits();
+    return Color(levels[0] << shift, levels[1] << shift, levels[2] << shift);
+}
 
-        const uint8_t r = (color.redQuantum()   >> shift) >> (8 - *paletteBits/3);
-        const uint8_t g = (color.greenQuantum() >> shift) >> (8 - *paletteBits/3);
-        const uint8_t b = (color.blueQuantum()  >> shift) >> (8 - *paletteBits/3);
+// replaces 'image' by its indexed version; with lineColors, returns the
+// first entry of the block rewritten before each line and its colours
+static void optimise(Image& image, std::vector<uint16_t>& lineFirst, std::vector<Color>& lineColorMap)
+{
+    const unsigned int width = image.columns();
+    const unsigned int height = image.rows();
+    const unsigned int entries = 1u << *bitsPerPixel;
 
-        if constexpr (std::is_same_v<T, VdiPaletteEntry>) {
-            const unsigned int max = (1u << (*paletteBits/3)) - 1;
+    std::vector<float> rgb;
+    rgb.reserve(3 * width * height);
 
-            pal[entry].r = r * 1000 / max;
-            pal[entry].g = g * 1000 / max;
-            pal[entry].b = b * 1000 / max;
-        } else if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
-            switch (*paletteBits) {
-            case 24:
-                pal[entry].r10 = r & 0x03;
-                pal[entry].g10 = g & 0x03;
-                pal[entry].b10 = b & 0x03;
-                [[fallthrough]];
-            case 18:
-                // shift by 0 (18-bit) or 2 (24-bit) bits
-                pal[entry].r765432 = r >> ((*paletteBits - 18)/3);
-                pal[entry].g765432 = g >> ((*paletteBits - 18)/3);
-                pal[entry].b765432 = b >> ((*paletteBits - 18)/3);
-                break;
-            case 12:
-            case 9:
-                // no need to handle the 18- vs. 24-bit difference
-                // as the bottom two bits are always zero
-                pal[entry].r765432 = r << (6 - *paletteBits/3);
-                pal[entry].g765432 = g << (6 - *paletteBits/3);
-                pal[entry].b765432 = b << (6 - *paletteBits/3);
-                break;
-            default:
-                throw_oss<std::invalid_argument>(std::ostringstream()
-                    << "Unexpected number of palette bits: " << *paletteBits
-                );
-            }
-        } else if constexpr (std::is_same_v<T, TtPaletteEntry>) {
-            switch (*paletteBits) {
-            case 12:
-            case 9:
-                // shift by 1 (9-bit ST) or 0 (12-bit STE) bits
-                pal[entry].r3210 = r << (4 - *paletteBits/3);
-                pal[entry].g3210 = g << (4 - *paletteBits/3);
-                pal[entry].b3210 = b << (4 - *paletteBits/3);
-                break;
-            default:
-                throw_oss<std::invalid_argument>(std::ostringstream()
-                    << "Unexpected number of palette bits: " << *paletteBits
-                );
-            }
-        } else if constexpr (std::is_same_v<T, StePaletteEntry>) {
-            switch (*paletteBits) {
-            case 12:
-                pal[entry].r0 = r & 0x01;
-                pal[entry].g0 = g & 0x01;
-                pal[entry].b0 = b & 0x01;
-                [[fallthrough]];
-            case 9:
-                // shift by 0 (9-bit ST) or 1 (12-bit STE) bits
-                pal[entry].r321 = r >> ((*paletteBits - 9)/3);
-                pal[entry].g321 = g >> ((*paletteBits - 9)/3);
-                pal[entry].b321 = b >> ((*paletteBits - 9)/3);
-                break;
-            default:
-                throw_oss<std::invalid_argument>(std::ostringstream()
-                    << "Unexpected number of palette bits: " << *paletteBits
-                );
-            }
-        } else
-            static_assert(bool_value<false, T>::value, "Unsupported palette type");
+    const PixelPacket* pPixelPackets = image.getConstPixels(0, 0, width, height);
+    for (size_t i = 0; i < width * height; ++i) {
+        constexpr double scale = 255.0 / MaxRGB;
+        rgb.push_back(pPixelPackets[i].red   * scale);
+        rgb.push_back(pPixelPackets[i].green * scale);
+        rgb.push_back(pPixelPackets[i].blue  * scale);
     }
 
-    for (const auto& pal_entry : pal) {
-        if constexpr (std::is_same_v<T, VdiPaletteEntry>) {
-            for (const uint16_t component : { pal_entry.r, pal_entry.g, pal_entry.b }) {
-                ofs.put(component >> 8);    // MSB
-                ofs.put(component);         // LSB
-            }
-        } else if constexpr (std::is_same_v<T, FalconPaletteEntry>) {
-            ofs.put(pal_entry.wrapper.value >> 24); // MSB
-            ofs.put(pal_entry.wrapper.value >> 16);
-            ofs.put(pal_entry.wrapper.value >>  8);
-            ofs.put(pal_entry.wrapper.value);   // LSB
-        } else if constexpr (std::is_same_v<T, TtPaletteEntry> || std::is_same_v<T, StePaletteEntry>) {
-            ofs.put(pal_entry.wrapper.value >> 8);  // MSB
-            ofs.put(pal_entry.wrapper.value);   // LSB
-        } else
-            static_assert(bool_value<false, T>::value, "Unsupported palette type");
+    if (*lineColors)
+        std::cout << "Optimising " << entries << " colours, " << *lineColors << " of them rewritten before every line." << std::endl;
+
+    const PaletteParams params = {
+        static_cast<int>(width), static_cast<int>(height), static_cast<int>(entries), *lineColors,
+        level_bits(), *dither
+    };
+    const PaletteResult result = optimise_palette(params, rgb);
+
+    Image indexed({width, height}, {0, 0, 0});
+    indexed.classType(PseudoClass);
+    indexed.type(PaletteType);
+    indexed.colorMapSize(entries);
+
+    for (unsigned int k = 0; k < entries; ++k)
+        indexed.colorMap(k, levels_to_color(result.palette[k]));
+
+    lineFirst = result.lineFirst;
+    lineColorMap.clear();
+    for (const Levels& levels : result.lineColors)
+        lineColorMap.push_back(levels_to_color(levels));
+
+    PixelPacket* pPixels = indexed.getPixels(0, 0, width, height);
+    IndexPacket* pIndexes = indexed.getIndexes();
+    for (size_t i = 0; i < width * height; ++i) {
+        pIndexes[i] = result.indices[i];
+        pPixels[i] = indexed.colorMap(result.indices[i]);
     }
+    indexed.syncPixels();
+
+    image = indexed;
 }
 
 template<typename T>
@@ -312,6 +400,9 @@ int main(int argc, char* argv[])
         outputFilename = parse_arguments(argc, argv);
         saving_uimg = outputFilename.substr(outputFilename.find_last_of('.')) == get_uimg_filename_ext();
 
+        if (*lineColors && !saving_uimg)
+            throw std::invalid_argument("'-linecol' requires an Atari bitmap as output.");
+
         image.quiet(false);
 
         if (is_uimg(argv[argc-1])) {
@@ -352,8 +443,19 @@ int main(int argc, char* argv[])
         }
 
         if (saving_uimg) {
+            std::vector<uint16_t> lineFirst;    // height
+            std::vector<Color> lineColorMap;    // height * lineColors
+
             if (*bitsPerPixel <= 8) {
-                if (image.classType() != PseudoClass || image.colorMapSize() > (1u << *bitsPerPixel)) {
+                // before the optimiser spends minutes on it
+                if (has_bitmap_data() && image.columns() % 16 != 0)
+                    throw std::runtime_error("Width must be divisible by 16.");
+
+                const bool convert = image.classType() != PseudoClass || image.colorMapSize() > (1u << *bitsPerPixel);
+
+                if (*lineColors) {
+                    optimise(image, lineFirst, lineColorMap);
+                } else if (convert) {
                     const size_t colors = image.classType() == PseudoClass
                             ? image.colorMapSize()
                             : image.totalColors();
@@ -373,9 +475,6 @@ int main(int argc, char* argv[])
                         << "Too few bpp for " << image.colorMapSize() << " colours."
                     );
                 }
-
-                if (has_bitmap_data() && image.columns() % 16 != 0)
-                    throw std::runtime_error("Width must be divisible by 16.");
             }
 
             std::ofstream ofs(outputFilename, std::ofstream::binary);
@@ -383,9 +482,9 @@ int main(int argc, char* argv[])
                 throw std::runtime_error("Opening destination file failed.");
 
             if (has_bitmap_data())
-                save_header(ofs, image.columns(), image.rows());
+                save_header(ofs, image.columns(), image.rows(), *lineColors);
             else
-                save_header(ofs, 0, 0);
+                save_header(ofs, 0, 0, 0);
 
             if (*paletteBits) {
                 if (*stCompatiblePalette)
@@ -396,6 +495,14 @@ int main(int argc, char* argv[])
                     save_palette<VdiPaletteEntry>(ofs, image, 1u << *bitsPerPixel);
                 else
                     save_palette<FalconPaletteEntry>(ofs, image, 1u << *bitsPerPixel);
+            }
+
+            // the palette blocks of the lines; assured by args.cpp: only a Falcon palette has them
+            for (size_t y = 0; y < lineFirst.size(); ++y) {
+                ofs.put(lineFirst[y] >> 8);
+                ofs.put(lineFirst[y]);
+                for (int k = 0; k < *lineColors; ++k)
+                    save_palette_entry(ofs, make_palette_entry<FalconPaletteEntry>(lineColorMap[y * *lineColors + k]));
             }
 
             if (has_bitmap_data()) {

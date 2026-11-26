@@ -24,6 +24,7 @@
 #include <cstring>
 #include <cstdint>
 #include <fstream>
+#include <sstream>
 #include <vector>
 
 #include "helpers.h"
@@ -44,6 +45,77 @@ bool is_uimg(const std::string& filePath)
             && (fileHeader.bitsPerPixel > 8 || (fileHeader.flags & 0b111) != 0b000);
 }
 
+// one palette entry of the given type (flags & 0b011, or 0b100 for VDI)
+static Magick::Color read_palette_entry(std::ifstream& ifs, const uint16_t type)
+{
+    Magick::Color color;
+
+    switch (type) {
+    case 0b001: {
+        // ST/E compatible palette
+        StePaletteEntry palEntry = {};
+        palEntry.wrapper.value |= ifs.get();
+        palEntry.wrapper.value <<= 8;
+        palEntry.wrapper.value |= ifs.get();
+
+        constexpr size_t shift = QuantumDepth - (3+1);  // 3+1 bits per channel
+        color.redQuantum(   ((palEntry.r321 << 1) | palEntry.r0) << shift );
+        color.greenQuantum( ((palEntry.g321 << 1) | palEntry.g0) << shift );
+        color.blueQuantum(  ((palEntry.b321 << 1) | palEntry.b0) << shift );
+    } break;
+
+    case 0b010: {
+        // TT compatible palette
+        TtPaletteEntry palEntry = {};
+        palEntry.wrapper.value |= ifs.get();
+        palEntry.wrapper.value <<= 8;
+        palEntry.wrapper.value |= ifs.get();
+
+        constexpr size_t shift = QuantumDepth - 4;  // 4 bits per channel
+        color.redQuantum(   palEntry.r3210 << shift );
+        color.greenQuantum( palEntry.g3210 << shift );
+        color.blueQuantum(  palEntry.b3210 << shift );
+    } break;
+
+    case 0b011: {
+        // Falcon compatible palette
+        FalconPaletteEntry palEntry = {};
+        palEntry.wrapper.value |= ifs.get();
+        palEntry.wrapper.value <<= 8;
+        palEntry.wrapper.value |= ifs.get();
+        palEntry.wrapper.value <<= 8;
+        palEntry.wrapper.value |= ifs.get();
+        palEntry.wrapper.value <<= 8;
+        palEntry.wrapper.value |= ifs.get();
+
+        constexpr size_t shift = QuantumDepth - 8;  // 8 bits per channel
+        color.redQuantum(   ((palEntry.r765432 << 2) | palEntry.r10) << shift );
+        color.greenQuantum( ((palEntry.g765432 << 2) | palEntry.g10) << shift );
+        color.blueQuantum(  ((palEntry.b765432 << 2) | palEntry.b10) << shift );
+    } break;
+
+    case 0b100: {
+        // VDI palette, three 0-1000 words per pen
+        unsigned int component[3] = {};
+        for (unsigned int& c : component) {
+            c  = ifs.get() << 8;
+            c |= ifs.get();
+        }
+
+        color.redQuantum(   component[0] * MaxRGB / 1000 );
+        color.greenQuantum( component[1] * MaxRGB / 1000 );
+        color.blueQuantum(  component[2] * MaxRGB / 1000 );
+    } break;
+
+    default:
+        throw_oss<std::invalid_argument>(std::ostringstream()
+            << "Unexpected palette type: " << type
+        );
+    }
+
+    return color;
+}
+
 Magick::Image load_uimg(const std::string& filePath)
 {
     std::ifstream ifs(filePath, std::ifstream::binary);
@@ -54,6 +126,22 @@ Magick::Image load_uimg(const std::string& filePath)
 
     fileHeader.version = (fileHeader.version >> 8) | (fileHeader.version << 8);
     fileHeader.flags   = (fileHeader.flags >> 8)   | (fileHeader.flags << 8);
+
+    // 101, 110, 111: ST/E, TT, Falcon palette with entries changed on every line
+    const uint16_t paletteType = fileHeader.flags & 0b111;
+    const bool multiline = (paletteType & 0b100) && (paletteType & 0b011);
+    const uint16_t entryType = multiline ? paletteType & 0b011 : paletteType;
+
+    unsigned int changedColorsPerLine = 0;
+    if (multiline) {
+        changedColorsPerLine = ifs.get();
+        ifs.get();  // pad
+
+        if (changedColorsPerLine == 0 || changedColorsPerLine > (1u << fileHeader.bitsPerPixel))
+            throw_oss<std::invalid_argument>(std::ostringstream()
+                << "Unexpected number of colours changed per line: " << changedColorsPerLine
+            );
+    }
 
     uint16_t width = 0;
     width |= ifs.get();
@@ -70,6 +158,10 @@ Magick::Image load_uimg(const std::string& filePath)
 
     Magick::Image image({width, height}, {0, 0, 0});
 
+    // the palette block of every line: its first entry, its colours (height * changedColorsPerLine)
+    std::vector<unsigned int> lineFirst;
+    std::vector<Magick::Color> lineColors;
+
     if (fileHeader.bitsPerPixel <= 8) {
         image.classType(Magick::PseudoClass);
         image.type(Magick::PaletteType);
@@ -77,74 +169,25 @@ Magick::Image load_uimg(const std::string& filePath)
         image.colorMapSize(1 << fileHeader.bitsPerPixel);
 
         for (size_t i = 0; i < image.colorMapSize(); ++i) {
-            Magick::Color color;
-
-            switch (fileHeader.flags & 0b111) {
-            case 0b001: {
-                // ST/E compatible palette
-                StePaletteEntry palEntry = {};
-                palEntry.wrapper.value |= ifs.get();
-                palEntry.wrapper.value <<= 8;
-                palEntry.wrapper.value |= ifs.get();
-
-                constexpr size_t shift = QuantumDepth - (3+1);  // 3+1 bits per channel
-                color.redQuantum(   ((palEntry.r321 << 1) | palEntry.r0) << shift );
-                color.greenQuantum( ((palEntry.g321 << 1) | palEntry.g0) << shift );
-                color.blueQuantum(  ((palEntry.b321 << 1) | palEntry.b0) << shift );
-            } break;
-
-            case 0b010: {
-                // TT compatible palette
-                TtPaletteEntry palEntry = {};
-                palEntry.wrapper.value |= ifs.get();
-                palEntry.wrapper.value <<= 8;
-                palEntry.wrapper.value |= ifs.get();
-
-                constexpr size_t shift = QuantumDepth - 4;  // 4 bits per channel
-                color.redQuantum(   palEntry.r3210 << shift );
-                color.greenQuantum( palEntry.g3210 << shift );
-                color.blueQuantum(  palEntry.b3210 << shift );
-            } break;
-
-            case 0b011: {
-                // Falcon compatible palette
-                FalconPaletteEntry palEntry = {};
-                palEntry.wrapper.value |= ifs.get();
-                palEntry.wrapper.value <<= 8;
-                palEntry.wrapper.value |= ifs.get();
-                palEntry.wrapper.value <<= 8;
-                palEntry.wrapper.value |= ifs.get();
-                palEntry.wrapper.value <<= 8;
-                palEntry.wrapper.value |= ifs.get();
-
-                constexpr size_t shift = QuantumDepth - 8;  // 8 bits per channel
-                color.redQuantum(   ((palEntry.r765432 << 2) | palEntry.r10) << shift );
-                color.greenQuantum( ((palEntry.g765432 << 2) | palEntry.g10) << shift );
-                color.blueQuantum(  ((palEntry.b765432 << 2) | palEntry.b10) << shift );
-            } break;
-
-            case 0b100: {
-                // VDI palette, three 0-1000 words per pen
-                unsigned int component[3] = {};
-                for (unsigned int& c : component) {
-                    c  = ifs.get() << 8;
-                    c |= ifs.get();
-                }
-
-                color.redQuantum(   component[0] * MaxRGB / 1000 );
-                color.greenQuantum( component[1] * MaxRGB / 1000 );
-                color.blueQuantum(  component[2] * MaxRGB / 1000 );
-            } break;
-
-            default:
-                throw_oss<std::invalid_argument>(std::ostringstream()
-                    << "Unexpected palette type: " << (fileHeader.flags & 0b111)
-                );
-            }
+            const Magick::Color color = read_palette_entry(ifs, entryType);
 
             // a VDI palette is stored by pen, everything else by colour index
-            image.colorMap((fileHeader.flags & 0b111) == 0b100
+            image.colorMap(entryType == 0b100
                     ? vdi_color_index(i, image.colorMapSize()) : i, color);
+        }
+
+        for (size_t y = 0; y < height && changedColorsPerLine; ++y) {
+            unsigned int first = ifs.get() << 8;
+            first |= ifs.get();
+
+            if (first + changedColorsPerLine > image.colorMapSize())
+                throw_oss<std::invalid_argument>(std::ostringstream()
+                    << "Line " << y << " rewrites entries beyond the palette: " << first
+                );
+
+            lineFirst.push_back(first);
+            for (size_t k = 0; k < changedColorsPerLine; ++k)
+                lineColors.push_back(read_palette_entry(ifs, entryType));
         }
     } else {
         image.classType(Magick::DirectClass);
@@ -240,6 +283,35 @@ Magick::Image load_uimg(const std::string& filePath)
     }
 
     image.syncPixels();
+
+    if (multiline) {
+        // what the display shows: a true colour picture
+        Magick::Image trueColor({width, height}, {0, 0, 0});
+        trueColor.classType(Magick::DirectClass);
+        trueColor.type(Magick::TrueColorType);
+
+        const Magick::IndexPacket* pIndexes = image.getConstIndexes();
+        Magick::PixelPacket* pPixels = trueColor.getPixels(0, 0, width, height);
+
+        // the palette as the display has it: every line's block written before the line
+        std::vector<Magick::Color> palette(image.colorMapSize());
+        for (size_t k = 0; k < palette.size(); ++k)
+            palette[k] = image.colorMap(k);
+
+        for (size_t y = 0; y < height; ++y) {
+            for (size_t k = 0; k < changedColorsPerLine; ++k)
+                palette[lineFirst[y] + k] = lineColors[y * changedColorsPerLine + k];
+
+            for (size_t x = 0; x < width; ++x) {
+                const size_t i = y * width + x;
+                pPixels[i] = palette[pIndexes[i]];
+            }
+        }
+
+        trueColor.syncPixels();
+
+        return trueColor;
+    }
 
     return image;
 }

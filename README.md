@@ -81,6 +81,13 @@ Store 9- and 12-bit palette in 16-bit TT palette format (`0000 RRRR GGGG BBBB`).
 ### `-vdi`
 Store the palette the way `vq_color()` returns it: three 16-bit words per entry, each `0` - `1000`. VDI pen order instead of by colour index.
 
+### `-linecol <num>`
+Number of palette entries (`1` - `10`) which get new colours before every line, `0` (default) keeps one palette for the whole bitmap. Before each line a block of `<num>` consecutive entries is rewritten (one `movem.l` for a raster routine), uConvert chooses where the block starts on each line; for example, `-bpp 8 -linecol 8` gives up to 256 + 8 * (height - 1) colours in the bitmap.
+
+Works only with 4 and 8 bits per pixel, a Falcon palette (no `-st`, `-tt` nor `-vdi`) and an Atari bitmap (`.bpX` or `.cXX`) as output. The palettes are computed by uConvert itself instead of GraphicsMagick's quantisation: every colour is the one of the whole palette grid (e.g. all 262144 18-bit colours) which gives the lowest error with the other colours fixed, see Arnaud Carré's [Brute Force Colors!](https://arnaud-carre.github.io/2022-12-30-amiga-ham/), and the block starts are searched for the lowest error (every start of every line), so a 640x480 bitmap takes tens of minutes.
+
+With `-dither` the picture is optimised as the eye sees it: the error is measured on the bitmap and the source both blurred slightly, every pixel takes the colour which lowers that error most (given its neighbours) and the colours follow, starting from Floyd-Steinberg error diffusion.
+
 ### `-out <filename.ext>`
 Export source bitmap as `<filename.ext>`. If `<ext>` is the one the Atari switches would produce anyway, an Atari bitmap is written, otherwise the format is taken from `<ext>` - all popular formats like GIF, JPEG, PNG, WEBP, ... [whatever GraphicsMagick supports](http://www.graphicsmagick.org/formats.html); Atari switches are then ignored (but still validated) and only resizing/dithering is applied. Useful for reading uConvert's native Atari formats and displaying on the host platform but usable as a generic bitmap converter, too.
 
@@ -100,11 +107,19 @@ uint16_t    version;
 //                                  010: TT compatible palette
 //                                  011: Falcon compatible palette
 //                                  100: VDI palette
+//                                  101: ST/E compatible palette, multiline
+//                                  110: TT compatible palette, multiline
+//                                  111: Falcon compatible palette, multiline
 uint16_t    flags;
 // 1, 2, 4, 6, 8, 16, 24, 32
 uint8_t     bitsPerPixel;
 // -1, 0, 1, 2, 3, 4
 int8_t      bytesPerChunk;
+// present only with a multiline palette (version 0x0300): entries
+// rewritten before every line, 1 .. (1<<bitsPerPixel)
+uint8_t     changedColorsPerLine;
+// present only with a multiline palette: 0, keeps the rest word aligned
+uint8_t     pad;
 
 // in pixels, 0 if there is no bitmap data
 uint16_t    width;
@@ -119,6 +134,16 @@ union {
   uint16_t vdiPaletteEntry[3];
 } Palette[1<<bitsPerPixel];
 
+// present only with a multiline palette: the block of entries rewritten
+// before each line, entries firstEntry .. firstEntry+changedColorsPerLine-1
+// (same entry type as Palette); the entries keep their colours until a later
+// block rewrites them; line 0's block is entries 0 .. changedColorsPerLine-1
+// as in Palette
+struct {
+  uint16_t firstEntry;
+  Palette  entries[changedColorsPerLine];
+} linePalettes[height];
+
 // present only if neither width nor height is 0
 char* bitmapData;
 ```
@@ -130,6 +155,7 @@ For example of UIMG handling, see [ushow](https://github.com/mikrosk/uconvert/tr
 - `uconvert -width 320 -height 200 -bpp 4 -pal 12 test.png` outputs `test.bp4` in native ST Low format using STE's 12-bit palette
 - `uconvert -width 320 -height 240 -bpp 8 -bpc 1 -pal 24 test.png` outputs `test.c08` in 8-bit (SuperVidel compatible) chunky format using SuperVidel's 24-bit palette
 - `uconvert -width 320 -height 240 -filter -bpp 16 test.png` outputs `test.c16` in 16-bit (Falcon compatible) chunky format with smoothened edges
+- `uconvert -width 640 -height 480 -bpp 8 -pal 18 -linecol 8 test.png` outputs `test.bp8` in 8 bitplanes with 18-bit Falcon palette in which a block of 8 entries is rewritten before every line
 - `uconvert -width 640 -height 400 -out test.gif test.bp4` outputs `test.gif` in twice as big dimensions as the original `test.bp4` from above
 - `uconvert -out test.bp8 test.bp4` outputs `test.bp8` with `test.bp4` stored in 8 bitplanes
 - asm-generated bitmap (save as `vasm -Fbin -o img.c04 img.asm`):
