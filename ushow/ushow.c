@@ -81,23 +81,32 @@ static void set_vdi_palette(const BitmapInfo* bitmap_info, int16_t vdi_handle)
         vs_color(vdi_handle, pen, (int16_t*)bitmap_info->palette.vdi[pen]);
 }
 
+// the page displayed by linepal_show()
+static const Page* linepal_page;
+
+// runs a multiline palette display routine for linepal_page (under Supexec(): no
+// stack arguments may span a switch between user and supervisor mode)
+static long linepal_show(void)
+{
+    const Page* p = linepal_page;
+    const LinepalRoutine routine = linepal_routine(p->screen_info.mode, p->bitmap_info.line_writes);
+
+    // the image lines on screen, as load_bitmap() puts them
+    int y0 = 0, h = p->screen_info.height;
+    if (p->bitmap_info.height < p->screen_info.height) {
+        y0 = (p->screen_info.height - p->bitmap_info.height) / 2;
+        h = p->bitmap_info.height;
+    }
+
+    return routine(p->bitmap_info.line_records, p->bitmap_info.palette.falcon, 1 << p->bitmap_info.bpp, y0, h);
+}
+
 // the scancode of the next key; a multiline palette is displayed meanwhile
 static uint8_t wait_key(const Page* p, bool aes_present)
 {
     if (p->bitmap_info.line_colors) {
-        const LinepalRoutine routine = linepal_routine(p->screen_info.mode, p->bitmap_info.line_writes);
-
-        // the image lines on screen, as load_bitmap() puts them
-        int y0 = 0, h = p->screen_info.height;
-        if (p->bitmap_info.height < p->screen_info.height) {
-            y0 = (p->screen_info.height - p->bitmap_info.height) / 2;
-            h = p->bitmap_info.height;
-        }
-
-        int32_t ssp = Super(0L);
-        const int ch = routine(p->bitmap_info.line_records, p->bitmap_info.palette.falcon,
-                               1 << p->bitmap_info.bpp, y0, h);
-        Super(ssp);
+        linepal_page = p;
+        const long ch = Supexec(linepal_show);
 
         if (ch >= 0)
             return ch;
@@ -194,6 +203,11 @@ int main(int argc, char* argv[])
             page[i].screen_info = get_vdi_screen_info(&page[i].bitmap_info, vdi_width, vdi_height, vdi_bpp);
         else
             page[i].screen_info = get_screen_info(&page[i].bitmap_info, vdo_val);
+
+        // the multiline palette routines are timed for VGA modes without PAL,
+        // which ushow otherwise takes over from the desktop's mode
+        if (page[i].bitmap_info.line_colors && page[i].screen_info.mode != -1 && (page[i].screen_info.mode & VGA))
+            page[i].screen_info.mode &= ~PAL;
 
         // a multiline palette needs a display routine for the mode
         if (page[i].bitmap_info.line_colors && page[i].screen_info.mode != -1

@@ -7,6 +7,12 @@ c2p1x1_6.s
 c2p1x1_8.s
 linepal.c
 linepal.h
+linepal_l10_320_1x.s
+linepal_l10_320_2x.s
+linepal_l10_640_1x.s
+linepal_l10_640_2x.s
+linepal_l8_1x.s
+linepal_l8_2x.s
 load_bitmap.c
 load_bitmap.h
 palette_type.h

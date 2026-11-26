@@ -23,7 +23,13 @@ all: $(TARGET).ttp
 $(TARGET).ttp: $(TARGET)
 	cp $< $@
 
-$(TARGET): ushow.o bitmap_info.o load_bitmap.o screen_info.o screen-asm.o c2p1x1_4.o c2p1x1_6.o c2p1x1_8.o linepal.o
+LINEPAL	:= linepal.o linepal_l8_1x.o linepal_l8_2x.o linepal_l10_320_1x.o linepal_l10_320_2x.o \
+	   linepal_l10_640_1x.o linepal_l10_640_2x.o
+
+$(TARGET): ushow.o bitmap_info.o load_bitmap.o screen_info.o screen-asm.o c2p1x1_4.o c2p1x1_6.o c2p1x1_8.o $(LINEPAL)
+
+# the per-line palette routines use 68030 instructions (CACR)
+linepal_%.o: ASFLAGS += -m68030
 
 .PHONY: clean
 clean:
