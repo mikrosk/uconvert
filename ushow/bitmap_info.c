@@ -24,6 +24,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <mint/osbind.h>
+
 #include "uimg.h"
 
 BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val, char* error)
@@ -115,12 +117,16 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val, char* error)
         }
         bitmap_info.line_writes = l;
         // a display routine reads one record ahead: the one after the last is there, unused
+        // read during the picture with the data cache off: TT-RAM, if there is any, is faster
         const size_t record = l * sizeof(uint32_t) + sizeof(uint16_t);
-        bitmap_info.line_records = calloc(bitmap_info.height + 1, record);
-        if (!bitmap_info.line_records) {
+        const size_t size = (bitmap_info.height + 1) * record;
+        const long mem = Mxalloc(size, MX_PREFTTRAM);
+        if (mem <= 0) {
             sprintf(error, "Not enough memory.");
             return bitmap_info;
         }
+        bitmap_info.line_records = (void*)mem;
+        memset(bitmap_info.line_records, 0, size);
 
         // the palette as the display has it before each line
         uint32_t current[256];
