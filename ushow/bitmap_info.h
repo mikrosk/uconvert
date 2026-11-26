@@ -39,6 +39,12 @@ typedef struct {
     } palette;
     uint16_t    width;
     uint16_t    height;
+    // multiline palette: entries rewritten before every line, 0 if none;
+    // per line line_writes colours (line_colors padded to 8 or 10 with
+    // colours the entries already hold) and the register address of the first
+    uint8_t     line_colors;
+    uint8_t     line_writes;
+    uint32_t*   line_records;
 } BitmapInfo;
 
 // on failure 'error' is filled in and the result is not usable

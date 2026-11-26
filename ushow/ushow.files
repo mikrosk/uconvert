@@ -5,6 +5,8 @@ c2p-asm.h
 c2p1x1_4.s
 c2p1x1_6.s
 c2p1x1_8.s
+linepal.c
+linepal.h
 load_bitmap.c
 load_bitmap.h
 palette_type.h

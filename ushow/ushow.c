@@ -29,16 +29,19 @@
 #include <mint/osbind.h>
 
 #include "bitmap_info.h"
+#include "linepal.h"
 #include "load_bitmap.h"
 #include "screen-asm.h"
 #include "screen_info.h"
 
-static struct {
+typedef struct {
     BitmapInfo bitmap_info;
     ScreenInfo screen_info;
     void*      screen;
     char*      path;        // kept for the bitmaps we draw only when they are shown
-} page[256];
+} Page;
+
+static Page page[256];
 
 static char error[256];
 
@@ -76,6 +79,32 @@ static void set_vdi_palette(const BitmapInfo* bitmap_info, int16_t vdi_handle)
 {
     for (int16_t pen = 0; pen < (1 << bitmap_info->bpp); ++pen)
         vs_color(vdi_handle, pen, (int16_t*)bitmap_info->palette.vdi[pen]);
+}
+
+// the scancode of the next key; a multiline palette is displayed meanwhile
+static uint8_t wait_key(const Page* p, bool aes_present)
+{
+    if (p->bitmap_info.line_colors) {
+        const LinepalRoutine routine = linepal_routine(p->screen_info.mode, p->bitmap_info.line_writes);
+
+        // the image lines on screen, as load_bitmap() puts them
+        int y0 = 0, h = p->screen_info.height;
+        if (p->bitmap_info.height < p->screen_info.height) {
+            y0 = (p->screen_info.height - p->bitmap_info.height) / 2;
+            h = p->bitmap_info.height;
+        }
+
+        int32_t ssp = Super(0L);
+        const int ch = routine(p->bitmap_info.line_records, p->bitmap_info.palette.falcon,
+                               1 << p->bitmap_info.bpp, y0, h);
+        Super(ssp);
+
+        if (ch >= 0)
+            return ch;
+        // no frame sync: shown without the lines' palettes
+    }
+
+    return aes_present ? (evnt_keybd() >> 8) & 0xff : (Crawcin() >> 16) & 0xff;
 }
 
 int main(int argc, char* argv[])
@@ -165,6 +194,15 @@ int main(int argc, char* argv[])
             page[i].screen_info = get_vdi_screen_info(&page[i].bitmap_info, vdi_width, vdi_height, vdi_bpp);
         else
             page[i].screen_info = get_screen_info(&page[i].bitmap_info, vdo_val);
+
+        // a multiline palette needs a display routine for the mode
+        if (page[i].bitmap_info.line_colors && page[i].screen_info.mode != -1
+                && !linepal_routine(page[i].screen_info.mode, page[i].bitmap_info.line_writes)) {
+            snprintf(error, sizeof(error), "No display routine for a multiline palette in this mode (%dx%d@%dbpp).",
+                     page[i].bitmap_info.width, page[i].bitmap_info.height, page[i].bitmap_info.bpp);
+            fclose(f);
+            break;
+        }
 
         if (!page[i].screen_info.keep_screen
                 && page[i].screen_info.rez == -1 && page[i].screen_info.mode == -1) {
@@ -302,8 +340,7 @@ int main(int argc, char* argv[])
                 Super(ssp);
             }
         // loop until ESC = 0x01 is pressed
-        } while ((aes_present && (ch = ((evnt_keybd() >> 8) & 0xff)) != 0x01)
-                 || (!aes_present && (ch = ((Crawcin() >> 16) & 0xff)) != 0x01));
+        } while ((ch = wait_key(&page[page_index], aes_present)) != 0x01);
 
         if (page[0].screen_info.keep_screen) {
             // the VDI remembers what vs_color() was told, so give it back its own
