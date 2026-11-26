@@ -40,11 +40,12 @@ typedef struct {
     uint16_t    width;
     uint16_t    height;
     // multiline palette: entries rewritten before every line, 0 if none;
-    // per line line_writes colours (line_colors padded to 8 or 10 with
-    // colours the entries already hold) and the register address of the first
+    // per line a record of line_writes colours (line_colors padded to 8 or 10
+    // with colours the entries already hold) and a word with the low half of
+    // the register address of the first; height + 1 records, word aligned
     uint8_t     line_colors;
     uint8_t     line_writes;
-    uint32_t*   line_records;
+    void*       line_records;
 } BitmapInfo;
 
 // on failure 'error' is filled in and the result is not usable

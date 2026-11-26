@@ -24,10 +24,11 @@
 #include <stdint.h>
 
 // Displays a bitmap with a multiline palette until a key is pressed (supervisor
-// mode, after the mode, the screen and the full palette are set). records: h
-// records of 'writes' colours and the palette register address of the first;
-// y0, h: the image lines in screen lines. Returns the key's scancode, -1 if the
-// display could not synchronise to the frame.
+// mode, after the mode, the screen and the full palette are set). records: h + 1
+// records (the last one read, not used), word aligned, of 'writes' colours and a
+// word with the low half of the palette register address of the first; y0, h:
+// the image lines in screen lines. Returns the key's scancode, -1 if the display
+// could not synchronise to the frame.
 typedef int (*LinepalRoutine)(const void* records, const uint32_t* palette, int entries, int y0, int h);
 
 // the routine for a VsetMode() mode and 8 or 10 writes per line, NULL if there is none

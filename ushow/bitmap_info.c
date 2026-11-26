@@ -114,7 +114,9 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val, char* error)
             return bitmap_info;
         }
         bitmap_info.line_writes = l;
-        bitmap_info.line_records = (uint32_t*)malloc(bitmap_info.height * (l + 1) * sizeof(uint32_t));
+        // a display routine reads one record ahead: the one after the last is there, unused
+        const size_t record = l * sizeof(uint32_t) + sizeof(uint16_t);
+        bitmap_info.line_records = calloc(bitmap_info.height + 1, record);
         if (!bitmap_info.line_records) {
             sprintf(error, "Not enough memory.");
             return bitmap_info;
@@ -139,9 +141,10 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val, char* error)
                 current[first + i] = colors[i];
 
             const size_t start = first + l > entries ? entries - l : first;
-            uint32_t* r = bitmap_info.line_records + y * (l + 1);
-            memcpy(r, current + start, l * sizeof(r[0]));
-            r[l] = 0xffff9800 + 4 * start;
+            char* r = (char*)bitmap_info.line_records + y * record;
+            const uint16_t reg = 0x9800 + 4 * start;   // $ffff9800 + 4 * start as a short address
+            memcpy(r, current + start, l * sizeof(uint32_t));
+            memcpy(r + l * sizeof(uint32_t), &reg, sizeof(reg));
         }
     }
 
