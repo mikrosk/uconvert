@@ -42,8 +42,9 @@
  *    again with the colour search for every colour the move touches; the
  *    best is kept if it lowers the cost. Then 2. and 3. again, until no
  *    move helps.
- * 5. Dithering: the cost becomes sum_c w_c |g * e_c|^2 (g a Gaussian of
- *    deviation BLUR_SIGMA, e = shown - original), lowered by pixels taking
+ * 5. Dithering: the cost becomes the error in Y'CbCr as the eye sees it:
+ *    brightness blurred a little (DITHER_SIGMA), colour more and partly
+ *    unblurred too (DITHER_LAMBDA), as in fp8; lowered by pixels taking
  *    the entry that lowers it most and by instances moving to its optimum
  *    on the grid, starting from Floyd-Steinberg.
  */
@@ -75,7 +76,8 @@ constexpr int LINE_INIT_SAMPLES = 4096;     // pixels the colours of a line star
 constexpr int SCHEDULE_FINALISTS = 32;      // block starts of a line scored with the colour search
 constexpr int SCHEDULE_PASSES = 2;          // colour search passes over the colours a move touches
 constexpr int MAX_SWEEPS = 20;              // of the schedule search
-constexpr float BLUR_SIGMA = 1.0f;
+constexpr float DITHER_SIGMA[3] = { 0.4f, 0.8f, 0.8f };  // blur of Y', Cb, Cr when dithering (as fp8)
+constexpr float DITHER_LAMBDA[3] = { 0.0f, 0.1f, 0.1f }; // weight of their unblurred error
 constexpr size_t PARALLEL_PIXELS = 65536;   // instances with more pixels search their colour in threads
 
 inline float dist(const float* a, const Rgb& b)
@@ -941,44 +943,69 @@ private:
         return moves;
     }
 
-    // ---- 5. dithering
+    // ---- 5. dithering: the cost is sum_c e_c . (k_c * e_c), e the error in
+    // Y'CbCr, k_c = g_c (*) g_c + lambda_c delta (g_c a Gaussian): brightness
+    // barely blurred, colour blurred more and partly also unblurred, as the
+    // eye forgives colour noise but not brightness noise; cpe_c = k_c * e_c
+    // kept up to date
 
-    int m_kr = 0;                       // radius of g (*) g
-    std::vector<float> m_kern;          // (2 m_kr + 1)^2
-    float m_k0 = 0;
-    std::vector<float> m_e, m_cpe;      // W * H * 3: shown - original, (g (*) g) * that
+    static void to_ycc(const float* rgb, float* o)
+    {
+        o[0] =  0.299f    * rgb[0] + 0.587f    * rgb[1] + 0.114f    * rgb[2];
+        o[1] = -0.168736f * rgb[0] - 0.331264f * rgb[1] + 0.5f      * rgb[2];
+        o[2] =  0.5f      * rgb[0] - 0.418688f * rgb[1] - 0.081312f * rgb[2];
+    }
+
+    static void to_rgb(const double* ycc, double* o)
+    {
+        o[0] = ycc[0]                      + 1.402    * ycc[2];
+        o[1] = ycc[0] - 0.344136 * ycc[1] - 0.714136 * ycc[2];
+        o[2] = ycc[0] + 1.772    * ycc[1];
+    }
+
+    int m_kr[3] = { 0, 0, 0 };          // radius of k_c
+    std::vector<float> m_kern[3];       // (2 m_kr + 1)^2
+    float m_k0[3] = { 0, 0, 0 };        // k_c(0)
+    std::vector<float> m_e, m_cpe;      // W * H * 3: the error (Y'CbCr), k * that
 
     void bump(int y, int x, const float* d)
     {
-        const int R = m_kr, D = 2 * R + 1;
-        const int y0 = std::max(0, y - R), y1 = std::min(H - 1, y + R);
-        const int x0 = std::max(0, x - R), x1 = std::min(W - 1, x + R);
         const size_t p = static_cast<size_t>(y) * W + x;
-        for (int c = 0; c < 3; ++c)
+        for (int c = 0; c < 3; ++c) {
+            if (d[c] == 0.0f)
+                continue;
             m_e[3 * p + c] += d[c];
-        for (int yy = y0; yy <= y1; ++yy) {
-            const float* kr = &m_kern[static_cast<size_t>(yy - y + R) * D + (x0 - x + R)];
-            float* row = &m_cpe[3 * (static_cast<size_t>(yy) * W + x0)];
-            for (int i = 0; i <= x1 - x0; ++i) {
-                row[3 * i + 0] += d[0] * kr[i];
-                row[3 * i + 1] += d[1] * kr[i];
-                row[3 * i + 2] += d[2] * kr[i];
+            const int R = m_kr[c], D = 2 * R + 1;
+            const int y0 = std::max(0, y - R), y1 = std::min(H - 1, y + R);
+            const int x0 = std::max(0, x - R), x1 = std::min(W - 1, x + R);
+            for (int yy = y0; yy <= y1; ++yy) {
+                const float* kr = &m_kern[c][static_cast<size_t>(yy - y + R) * D + (x0 - x + R)];
+                float* row = &m_cpe[3 * (static_cast<size_t>(yy) * W + x0) + c];
+                for (int i = 0; i <= x1 - x0; ++i)
+                    row[3 * i] += d[c] * kr[i];
             }
         }
+    }
+
+    void line_palette_ycc(int y, std::vector<std::array<float, 3>>& ycc) const
+    {
+        for (int e = 0; e < N; ++e)
+            to_ycc(color(y, e).data(), ycc[e].data());
     }
 
     void blur_rebuild()
     {
         std::fill(m_e.begin(), m_e.end(), 0.0f);
         std::fill(m_cpe.begin(), m_cpe.end(), 0.0f);
-        std::vector<Rgb> pal(N);
+        std::vector<std::array<float, 3>> ycc(N);
         for (int y = 0; y < H; ++y) {
-            line_palette(y, pal.data());
+            line_palette_ycc(y, ycc);
             for (int x = 0; x < W; ++x) {
                 const size_t p = static_cast<size_t>(y) * W + x;
-                float d[3];
+                float o[3], d[3];
+                to_ycc(&m_rgb[3 * p], o);
                 for (int c = 0; c < 3; ++c)
-                    d[c] = pal[m_ent[p]][c] - m_rgb[3 * p + c];
+                    d[c] = ycc[m_ent[p]][c] - o[c];
                 bump(y, x, d);
             }
         }
@@ -988,33 +1015,42 @@ private:
     {
         double s = 0;
         for (size_t i = 0; i < m_e.size(); ++i)
-            s += WEIGHT[i % 3] * m_e[i] * m_cpe[i];
+            s += m_e[i] * m_cpe[i];
         return s;
     }
 
     long pixel_sweep(int pass)
     {
         long changed = 0;
-        std::vector<Rgb> pal(N);
+        std::vector<std::array<float, 3>> ycc(N);
         const bool rev = pass & 1;
         for (int yi = 0; yi < H; ++yi) {
             const int y = rev ? H - 1 - yi : yi;
-            line_palette(y, pal.data());
+            line_palette_ycc(y, ycc);
             for (int xi = 0; xi < W; ++xi) {
                 const int x = rev ? W - 1 - xi : xi;
                 const size_t p = static_cast<size_t>(y) * W + x;
                 const int a = m_ent[p];
-                // the colour that would cancel the error seen here
-                float t[3];
-                for (int c = 0; c < 3; ++c)
-                    t[c] = pal[a][c] - m_cpe[3 * p + c] / m_k0;
-                float d;
-                const int b = nearest(t, pal.data(), N, d);
-                if (b != a && d < dist(t, pal[a]) * 0.999999f) {
-                    float dd[3];
+                const float* cpe = &m_cpe[3 * p];
+                // change of the cost when the pixel takes entry k instead
+                int b = a;
+                float best = -1e-4f;
+                for (int k = 0; k < N; ++k) {
+                    float dc = 0;
+                    for (int c = 0; c < 3; ++c) {
+                        const float d = ycc[k][c] - ycc[a][c];
+                        dc += d * (2.0f * cpe[c] + d * m_k0[c]);
+                    }
+                    if (dc < best) {
+                        best = dc;
+                        b = k;
+                    }
+                }
+                if (b != a) {
+                    float d[3];
                     for (int c = 0; c < 3; ++c)
-                        dd[c] = pal[b][c] - pal[a][c];
-                    bump(y, x, dd);
+                        d[c] = ycc[b][c] - ycc[a][c];
+                    bump(y, x, d);
                     m_ent[p] = static_cast<uint8_t>(b);
                     ++changed;
                 }
@@ -1026,11 +1062,10 @@ private:
     // every instance to the grid colour of the lowest cost with its pixels as they are
     void colour_sweep()
     {
-        const int R = m_kr, D = 2 * R + 1;
         for (int e = 0; e < N; ++e)
             for (size_t j = 0; j < m_births[e].size(); ++j) {
                 const int b = m_births[e][j], dEnd = end_of(e, static_cast<int>(j));
-                double S1[3] = { 0, 0, 0 }, S2 = 0;
+                double S1[3] = { 0, 0, 0 }, S2[3] = { 0, 0, 0 };
                 size_t n = 0;
                 for (int y = b; y <= dEnd; ++y)
                     for (int x = 0; x < W; ++x) {
@@ -1038,32 +1073,40 @@ private:
                         if (m_ent[p] != e)
                             continue;
                         ++n;
-                        for (int c = 0; c < 3; ++c)
+                        for (int c = 0; c < 3; ++c) {
                             S1[c] += m_cpe[3 * p + c];
-                        const int y0 = std::max(b, y - R), y1 = std::min(dEnd, y + R);
-                        const int x0 = std::max(0, x - R), x1 = std::min(W - 1, x + R);
-                        for (int yy = y0; yy <= y1; ++yy)
-                            for (int xx = x0; xx <= x1; ++xx)
-                                if (m_ent[static_cast<size_t>(yy) * W + xx] == e)
-                                    S2 += m_kern[static_cast<size_t>(yy - y + R) * D + (xx - x + R)];
+                            const int R = m_kr[c], D = 2 * R + 1;
+                            const int y0 = std::max(b, y - R), y1 = std::min(dEnd, y + R);
+                            const int x0 = std::max(0, x - R), x1 = std::min(W - 1, x + R);
+                            for (int yy = y0; yy <= y1; ++yy)
+                                for (int xx = x0; xx <= x1; ++xx)
+                                    if (m_ent[static_cast<size_t>(yy) * W + xx] == e)
+                                        S2[c] += m_kern[c][static_cast<size_t>(yy - y + R) * D + (xx - x + R)];
+                        }
                     }
                 if (!n)
                     continue;
 
-                // change of the cost when the colour moves by dc: sum_c w_c (2 dc S1_c + dc^2 S2)
+                // change of the cost when the colour moves by dc (Y'CbCr): sum_c 2 dc S1_c + dc^2 S2_c
                 const Rgb cur = m_cols[e][j];
                 auto q = [&](const int* v) {
+                    float dr[3], dy[3];
+                    for (int c = 0; c < 3; ++c)
+                        dr[c] = m_grid.value(v[c]) - cur[c];
+                    to_ycc(dr, dy);
                     double r = 0;
-                    for (int c = 0; c < 3; ++c) {
-                        const double dc = m_grid.value(v[c]) - cur[c];
-                        r += WEIGHT[c] * (2.0 * dc * S1[c] + dc * dc * S2);
-                    }
+                    for (int c = 0; c < 3; ++c)
+                        r += 2.0 * dy[c] * S1[c] + static_cast<double>(dy[c]) * dy[c] * S2[c];
                     return r;
                 };
                 int u[3], v[3];
+                double opt[3], optRgb[3];
+                for (int c = 0; c < 3; ++c)
+                    opt[c] = -S1[c] / S2[c];
+                to_rgb(opt, optRgb);
                 for (int c = 0; c < 3; ++c) {
                     u[c] = m_grid.level(cur[c]);
-                    v[c] = m_grid.level(cur[c] - static_cast<float>(S1[c] / S2));
+                    v[c] = m_grid.level(cur[c] + static_cast<float>(optRgb[c]));
                 }
                 double qv = q(v);
                 for (int it = 0; it < 256; ++it) {     // down the grid
@@ -1089,11 +1132,13 @@ private:
                 }
                 if (qv < -1e-3 && (v[0] != u[0] || v[1] != u[1] || v[2] != u[2])) {
                     const Rgb nc = { m_grid.value(v[0]), m_grid.value(v[1]), m_grid.value(v[2]) };
-                    const float dd[3] = { nc[0] - cur[0], nc[1] - cur[1], nc[2] - cur[2] };
+                    const float dr[3] = { nc[0] - cur[0], nc[1] - cur[1], nc[2] - cur[2] };
+                    float dy[3];
+                    to_ycc(dr, dy);
                     for (int y = b; y <= dEnd; ++y)
                         for (int x = 0; x < W; ++x)
                             if (m_ent[static_cast<size_t>(y) * W + x] == e)
-                                bump(y, x, dd);
+                                bump(y, x, dy);
                     m_cols[e][j] = nc;
                 }
             }
@@ -1137,18 +1182,22 @@ private:
 
     void blur_optimise()
     {
-        // kernel g (*) g: a Gaussian of variance 2 sigma^2
-        m_kr = static_cast<int>(std::ceil(3.0f * BLUR_SIGMA * std::sqrt(2.0f)));
-        const int D = 2 * m_kr + 1;
-        std::vector<double> k1(D);
-        double sum = 0;
-        for (int i = 0; i < D; ++i)
-            sum += k1[i] = std::exp(-double(i - m_kr) * (i - m_kr) / (4.0 * BLUR_SIGMA * BLUR_SIGMA));
-        m_kern.resize(static_cast<size_t>(D) * D);
-        for (int a = 0; a < D; ++a)
-            for (int b = 0; b < D; ++b)
-                m_kern[static_cast<size_t>(a) * D + b] = static_cast<float>(k1[a] * k1[b] / (sum * sum));
-        m_k0 = m_kern[static_cast<size_t>(m_kr) * D + m_kr];
+        for (int c = 0; c < 3; ++c) {
+            // g (*) g: a Gaussian of variance 2 sigma^2
+            const double sigma = DITHER_SIGMA[c];
+            m_kr[c] = static_cast<int>(std::ceil(3.0 * sigma * std::sqrt(2.0)));
+            const int D = 2 * m_kr[c] + 1;
+            std::vector<double> k1(D);
+            double sum = 0;
+            for (int i = 0; i < D; ++i)
+                sum += k1[i] = std::exp(-double(i - m_kr[c]) * (i - m_kr[c]) / (4.0 * sigma * sigma));
+            m_kern[c].resize(static_cast<size_t>(D) * D);
+            for (int a = 0; a < D; ++a)
+                for (int b = 0; b < D; ++b)
+                    m_kern[c][static_cast<size_t>(a) * D + b] = static_cast<float>(k1[a] * k1[b] / (sum * sum));
+            m_kern[c][static_cast<size_t>(m_kr[c]) * D + m_kr[c]] += DITHER_LAMBDA[c];
+            m_k0[c] = m_kern[c][static_cast<size_t>(m_kr[c]) * D + m_kr[c]];
+        }
         m_e.assign(m_rgb.size(), 0.0f);
         m_cpe.assign(m_rgb.size(), 0.0f);
 
