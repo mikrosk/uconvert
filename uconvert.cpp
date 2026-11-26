@@ -451,21 +451,19 @@ int main(int argc, char* argv[])
                 if (has_bitmap_data() && image.columns() % 16 != 0)
                     throw std::runtime_error("Width must be divisible by 16.");
 
+                // a bitmap with few enough colours keeps them, indices included
                 const bool convert = image.classType() != PseudoClass || image.colorMapSize() > (1u << *bitsPerPixel);
 
-                if (*lineColors) {
-                    optimise(image, lineFirst, lineColorMap);
-                } else if (convert) {
+                if (convert) {
                     const size_t colors = image.classType() == PseudoClass
                             ? image.colorMapSize()
                             : image.totalColors();
 
                     std::cout << "Converting from " << colors << " to " << (1ul << *bitsPerPixel) << " colours." << std::endl;
-
-                    image.quantizeDither(*dither);
-                    image.quantizeColors(1u << *bitsPerPixel);
-                    image.quantize();
                 }
+
+                if (convert || *lineColors)
+                    optimise(image, lineFirst, lineColorMap);
 
                 if (image.classType() != PseudoClass)
                     throw std::runtime_error("Not a pseudo class.");

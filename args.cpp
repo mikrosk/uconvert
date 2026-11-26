@@ -93,7 +93,7 @@ static void print_help(const char* name)
         << "  -width <num>     specify new bitmap width [default " << DEFAULT_BITMAP_WIDTH << "]" << std::endl
         << "  -height <num>    specify new bitmap height [default " << DEFAULT_BITMAP_HEIGHT << "]" << std::endl
         << "  -filter          use filtering when resizing [default " << std::boolalpha << DEFAULT_FILTER << "]" << std::endl
-        << "  -dither          use dithering when resizing and/or converting colours [default " << std::boolalpha << DEFAULT_DITHER << "]" << std::endl
+        << "  -dither          optimise the colours for the eye (dithering) when converting to bpp <= 8 [default " << std::boolalpha << DEFAULT_DITHER << "]" << std::endl
         << "  -bpp <num>       bits per pixel, i.e. colour depth (1, 2, 4, 6, 8, 16 [RGB565], 24, 32) [default " << DEFAULT_BITS_PER_PIXEL << "]" << std::endl
         << "  -bpc <num>       bytes per chunk (-1 for packed chunky pixels [default for bpp > 8], 0, 1, 2, 3, 4) [default " << DEFAULT_BYTES_PER_CHUNK << "]" << std::endl
         << "  -pal <num>       number of bits per palette entry where applicable (0, 9, 12, 18, 24; implicitly disabled for bpp > 8) [default " << DEFAULT_PALETTE_BITS << "]" << std::endl

@@ -59,7 +59,9 @@ Setting either of them to `0` stores just a palette and no bitmap data. `-bpp` s
 Filter (smoothen) edges when resizing. This usually leads to increased number of colours and an implicit colour conversion process takes place. This conversion can be altered using `-dither`.
 
 ### `-dither`
-For output bitmap with 1 - 8 bpp an implicit conversion takes place if source bitmap is stored in a higher bit depth. This parameters enables dithering - sometimes it offers better resulting image, sometimes not.
+For output bitmap with 1 - 8 bpp an implicit conversion takes place if source bitmap has more colours than `1<<bpp` (a bitmap with few enough indexed colours keeps them, indices included). uConvert computes the palette itself: every colour is the one of the whole palette grid (e.g. all 262144 18-bit colours) which gives the lowest error with the other colours fixed, see Arnaud Carré's [Brute Force Colors!](https://arnaud-carre.github.io/2022-12-30-amiga-ham/).
+
+Without `-dither` every pixel takes the nearest colour. With `-dither` the picture is optimised as the eye sees it: the error is measured on the bitmap and the source both blurred slightly, every pixel takes the colour which lowers that error most (given its neighbours) and the colours follow, starting from Floyd-Steinberg error diffusion. Looked at closely, it is noisier than error diffusion; from a normal distance it is much closer to the source. It takes from seconds to minutes.
 
 Note: 16, 24 and 32 bpp bitmaps are never converted, individual pixels are just stored with as many bits as possible.
 
@@ -84,9 +86,7 @@ Store the palette the way `vq_color()` returns it: three 16-bit words per entry,
 ### `-linecol <num>`
 Number of palette entries (`1` - `10`) which get new colours before every line, `0` (default) keeps one palette for the whole bitmap. Before each line a block of `<num>` consecutive entries is rewritten (one `movem.l` for a raster routine), uConvert chooses where the block starts on each line; for example, `-bpp 8 -linecol 8` gives up to 256 + 8 * (height - 1) colours in the bitmap.
 
-Works only with 4 and 8 bits per pixel, a Falcon palette (no `-st`, `-tt` nor `-vdi`) and an Atari bitmap (`.bpX` or `.cXX`) as output. The palettes are computed by uConvert itself instead of GraphicsMagick's quantisation: every colour is the one of the whole palette grid (e.g. all 262144 18-bit colours) which gives the lowest error with the other colours fixed, see Arnaud Carré's [Brute Force Colors!](https://arnaud-carre.github.io/2022-12-30-amiga-ham/), and the block starts are searched for the lowest error (every start of every line), so a 640x480 bitmap takes tens of minutes.
-
-With `-dither` the picture is optimised as the eye sees it: the error is measured on the bitmap and the source both blurred slightly, every pixel takes the colour which lowers that error most (given its neighbours) and the colours follow, starting from Floyd-Steinberg error diffusion.
+Works only with 4 and 8 bits per pixel, a Falcon palette (no `-st`, `-tt` nor `-vdi`) and an Atari bitmap (`.bpX` or `.cXX`) as output. The block starts are searched for the lowest error (every start of every line), so a 640x480 bitmap takes tens of minutes.
 
 ### `-out <filename.ext>`
 Export source bitmap as `<filename.ext>`. If `<ext>` is the one the Atari switches would produce anyway, an Atari bitmap is written, otherwise the format is taken from `<ext>` - all popular formats like GIF, JPEG, PNG, WEBP, ... [whatever GraphicsMagick supports](http://www.graphicsmagick.org/formats.html); Atari switches are then ignored (but still validated) and only resizing/dithering is applied. Useful for reading uConvert's native Atari formats and displaying on the host platform but usable as a generic bitmap converter, too.
