@@ -590,60 +590,88 @@ private:
         }
     }
 
+    // the instances in waves of disjoint line ranges: those of one wave
+    // touch disjoint pixels and are searched in parallel (a single palette
+    // has one instance per wave and splits its pixels over threads instead)
     void search_pass()
     {
-        std::vector<Rgb> pal(N);
-        std::vector<float> alt;
-        std::vector<uint8_t> altEnt;
-        Gains own;
-
+        struct Inst { int e, j, b, d; };
+        std::vector<Inst> all;
         for (int e = 0; e < N; ++e)
-            for (size_t j = 0; j < m_births[e].size(); ++j) {
-                const int b = m_births[e][j], d = end_of(e, static_cast<int>(j));
-                const size_t p0 = static_cast<size_t>(b) * W, p1 = static_cast<size_t>(d + 1) * W;
-                alt.resize(p1 - p0);
-                altEnt.resize(p1 - p0);
+            for (size_t j = 0; j < m_births[e].size(); ++j)
+                all.push_back({ e, static_cast<int>(j), m_births[e][j], end_of(e, static_cast<int>(j)) });
+        std::stable_sort(all.begin(), all.end(), [](const Inst& a, const Inst& b) { return a.b < b.b; });
 
-                // the cost of every pixel without this instance
-                double current = 0, base = 0;
-                for (int y = b; y <= d; ++y) {
-                    bool havePal = false;
-                    for (int x = 0; x < W; ++x) {
-                        const size_t p = static_cast<size_t>(y) * W + x, t = p - p0;
-                        current += m_err[p];
-                        if (m_ent[p] != e) {
-                            alt[t] = m_err[p];
-                            altEnt[t] = m_ent[p];
-                        } else {
-                            if (!havePal) {
-                                line_palette(y, pal.data());
-                                pal[e] = { 1e9f, 1e9f, 1e9f };
-                                havePal = true;
-                            }
-                            float dd;
-                            altEnt[t] = nearest(src(p), pal.data(), N, dd);
-                            alt[t] = dd;
-                        }
-                        base += alt[t];
-                    }
-                }
-
-                Rgb c;
-                float gain;
-                if (!best_colour(alt.size(), [&](size_t i) { return src(p0 + i); }, [&](size_t i) { return alt[i]; },
-                                 own, true, c, gain))
-                    continue;
-                if (base - gain >= current - 1e-3)
-                    continue;
-
-                m_cols[e][j] = c;
-                for (size_t t = 0; t < alt.size(); ++t) {
-                    const size_t p = p0 + t;
-                    const float dd = dist(src(p), c);
-                    m_ent[p] = dd < alt[t] ? static_cast<uint8_t>(e) : altEnt[t];
-                    m_err[p] = dd < alt[t] ? dd : alt[t];
-                }
+        std::vector<std::vector<Inst>> waves;
+        std::vector<int> waveEnd;
+        for (const Inst& i : all) {
+            size_t w = 0;
+            while (w < waves.size() && waveEnd[w] >= i.b)
+                ++w;
+            if (w == waves.size()) {
+                waves.emplace_back();
+                waveEnd.push_back(-1);
             }
+            waves[w].push_back(i);
+            waveEnd[w] = i.d;
+        }
+
+        Gains own;
+        for (const auto& wave : waves) {
+            if (wave.size() == 1)
+                search_instance(wave[0].e, wave[0].j, own, true);
+            else
+                parallel_for(wave.size(), [&](size_t k, unsigned t) { search_instance(wave[k].e, wave[k].j, m_gains[t], false); });
+        }
+    }
+
+    void search_instance(int e, int j, Gains& gains, bool parallel)
+    {
+        const int b = m_births[e][j], d = end_of(e, j);
+        const size_t p0 = static_cast<size_t>(b) * W, p1 = static_cast<size_t>(d + 1) * W;
+        std::vector<float> alt(p1 - p0);
+        std::vector<uint8_t> altEnt(p1 - p0);
+        std::vector<Rgb> pal(N);
+
+        // the cost of every pixel without this instance
+        double current = 0, base = 0;
+        for (int y = b; y <= d; ++y) {
+            bool havePal = false;
+            for (int x = 0; x < W; ++x) {
+                const size_t p = static_cast<size_t>(y) * W + x, t = p - p0;
+                current += m_err[p];
+                if (m_ent[p] != e) {
+                    alt[t] = m_err[p];
+                    altEnt[t] = m_ent[p];
+                } else {
+                    if (!havePal) {
+                        line_palette(y, pal.data());
+                        pal[e] = { 1e9f, 1e9f, 1e9f };
+                        havePal = true;
+                    }
+                    float dd;
+                    altEnt[t] = nearest(src(p), pal.data(), N, dd);
+                    alt[t] = dd;
+                }
+                base += alt[t];
+            }
+        }
+
+        Rgb c;
+        float gain;
+        if (!best_colour(alt.size(), [&](size_t i) { return src(p0 + i); }, [&](size_t i) { return alt[i]; },
+                         gains, parallel, c, gain))
+            return;
+        if (base - gain >= current - 1e-3)
+            return;
+
+        m_cols[e][j] = c;
+        for (size_t t = 0; t < alt.size(); ++t) {
+            const size_t p = p0 + t;
+            const float dd = dist(src(p), c);
+            m_ent[p] = dd < alt[t] ? static_cast<uint8_t>(e) : altEnt[t];
+            m_err[p] = dd < alt[t] ? dd : alt[t];
+        }
     }
 
     // ---- 4. schedule search: line y stops rewriting the entries rem (their
