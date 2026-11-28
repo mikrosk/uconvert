@@ -1,4 +1,4 @@
-/* linepal.h: per-line palette blocks on Falcon VGA screens.
+/* linepal.h: per-line palette blocks on Falcon VGA and RGB/TV screens.
  *
  * A routine shows the current screen while it writes, before every image
  * line, a block of `writes` (8) consecutive palette entries:
@@ -10,8 +10,9 @@
  *   palette  the full palette (`entries` = 16 or 256 longs); written at the
  *            top of every frame (vertical blank) and on return.
  *   y0, h    first image line and number of image lines in screen lines
- *            (0..239 on the line-doubled 240-line modes); record i is
- *            written before screen line y0+i. h >= 1, y0+h <= screen lines.
+ *            (0..239 on the line-doubled 240-line VGA modes, 0..199 or
+ *            0..239 with overscan on RGB/TV); record i is written before
+ *            screen line y0+i. h >= 1, y0+h <= screen lines.
  * Returns the IKBD make code of the first key pressed, -1 when the frame
  * sync failed in 8 frames in a row.
  * Call in supervisor mode after VsetMode/VsetScreen and the full palette.
@@ -19,10 +20,15 @@
  * IKBD mouse reporting is off; everything is restored before it returns.
  *
  * linepal_routine(): routine for a VsetMode mode and `writes`, or NULL.
- * Supported (measured on the Falcon): VGA modes (bit 4 set; PAL, overscan
- * and ST-compatible bits clear), 4 or 8 bpp, 320 or 640 columns, with or
- * without VERTFLAG (240 lines, line-doubled); writes = 8 only.
- */
+ * Supported (measured on the Falcon), 4 or 8 bpp, writes 8 (pictures with
+ * fewer changes per line are padded to 8):
+ *   VGA monitor: VGA modes (bit 4 set; PAL, overscan and ST-compatible
+ *   bits clear), 320 or 640 columns, with or without VERTFLAG (240 lines,
+ *   line-doubled);
+ *   RGB/TV monitor: RGB/TV modes (bit 4 clear, ST-compatible bit clear),
+ *   320 or 640 columns, PAL or NTSC, overscan with PAL only; not
+ *   interlaced (VERTFLAG refused).
+  */
 #ifndef LINEPAL_H
 #define LINEPAL_H
 

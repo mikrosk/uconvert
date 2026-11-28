@@ -23,7 +23,7 @@ all: $(TARGET).ttp
 $(TARGET).ttp: $(TARGET)
 	cp $< $@
 
-LINEPAL	:= linepal.o linepal_l8_1x.o linepal_l8_2x.o
+LINEPAL	:= linepal.o linepal_l8_1x.o linepal_l8_2x.o linepal_l8_rgb320.o linepal_l8_rgb640.o
 
 $(TARGET): ushow.o bitmap_info.o load_bitmap.o screen_info.o screen-asm.o c2p1x1_4.o c2p1x1_6.o c2p1x1_8.o $(LINEPAL)
 

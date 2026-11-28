@@ -1,8 +1,8 @@
-; linepal_l8_1x: per-line palette blocks, LP_L=8 LP_W=320 LP_DBL=0.
+; linepal_l8_1x: per-line palette blocks, LP_RGB=0 LP_W=320 LP_DBL=0.
 ; Flat copy of linepal.s (IFs, macros resolved); the entry lp_entry is renamed linepal_l8_1x.
 ; Assemble: vasmm68k_mot -m68030 -quiet -Felf -opt-allbra
 
-LP_L			equ	8			; command line
+LP_RGB			equ	0			; command line
 LP_W			equ	320			; command line
 LP_DBL			equ	0			; command line
 HLPL			equ	2			; = 2+2*LP_DBL half-lines per screen line
@@ -10,14 +10,14 @@ PASSES			equ	400			; polls per line, shared by its waits
 SYNC_PASSES		equ	50000			; polls for the frame sync (> 1 frame)
 SYNC_HL			equ	56			; frame sync: half-lines before VDB
 NOSYNC_MAX		equ	8			; failed frame syncs in a row -> -1
+HL_PAL			equ	0			; palette write position (HL,VAL)
 VDB_PAR			equ	1			; VDB parity the parity waits assume
-HL_PAL			equ	0
 ENTRY_R			equ	$a0
 SYNC_R			equ	$a0
 VAL_W			equ	106			; = VAL_PAL
 VBL_SR			equ	$2700
 FRAME_SR		equ	$2700
-PRECACHE_SR		equ	$2700
+PRECACHE_SR		equ	$2700			; palette restore and dry line
 
 		section	text
 
@@ -172,8 +172,8 @@ lp_frame:	move.w	#VBL_SR,sr
 .synced:	clr.b	lp_nosync
 		move.w	#PRECACHE_SR,sr
 		bsr	lp_setpal			; full palette
-; dry line: one pass through the block from 2 half-lines on (VFC_WAIT 1:
-; its parity waits start from the current half-line)
+; dry line: one pass through the block (VFC_WAIT 1: its parity waits start
+; from the current half-line; VFC_WAIT 0: target 2 half-lines on)
 		st	lp_dry
 		move.l	lp_recs,a5
 		movem.l	(a5)+,d1/d4-d5/d7/a0-a3		; next record: colours, register
@@ -191,8 +191,8 @@ lp_drydone:	moveq	#3,d0				; freeze (the block freezes it as it
 		movem.l	(a5)+,d1/d4-d5/d7/a0-a3		; next record: colours, register
 		movea.w	(a5)+,a4			; $98xx -> $FFFF98xx
 ; enter the block at a defined point, VFC >= d6 in two reads in a row:
-; VFC_WAIT 0 one VFC step before the first target; VFC_WAIT 1 on the
-; half-line of the previous line's write, where the parity waits start
+; VFC_WAIT 1 on the half-line of the previous line's write, where the parity
+; waits start; VFC_WAIT 0 one VFC step before the first target
 		move.w	lp_first,d6
 		subq.w	#HLPL,d6
 		move.w	#SYNC_PASSES-1,d3
