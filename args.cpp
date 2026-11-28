@@ -71,7 +71,7 @@ std::unordered_map<std::string, std::pair<std::unordered_set<int16_t>, std::opti
     { "-pal",    { { 0, 9, 12, 18, 24 },             paletteBits   } },
     { "-width",  { { },                              bitmapWidth   } },
     { "-height", { { },                              bitmapHeight  } },
-    { "-linecol", { { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }, lineColors  } }
+    { "-linecol", { { 0, 1, 2, 3, 4, 5, 6, 7, 8 },   lineColors    } }
 };
 
 std::unordered_map<std::string, std::optional<bool>&> allowedFlags = {
@@ -100,7 +100,7 @@ static void print_help(const char* name)
         << "  -st              output palette in ST/E-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_ST_COMPATIBLE << "]" << std::endl
         << "  -tt              output palette in TT-specific format (only 9/12-bit palette) [default " << std::boolalpha << DEFAULT_TT_COMPATIBLE << "]" << std::endl
         << "  -vdi             output palette in VDI-specific format [default " << std::boolalpha << DEFAULT_VDI_COMPATIBLE << "]" << std::endl
-        << "  -linecol <num>   number of consecutive palette entries (0 - 10) rewritten before every line (only Falcon palette and bpp 4, 8) [default " << DEFAULT_LINE_COLORS << "]" << std::endl
+        << "  -linecol <num>   number of consecutive palette entries (0 - 8) rewritten before every line (only Falcon palette and bpp 4, 8) [default " << DEFAULT_LINE_COLORS << "]" << std::endl
         << "  -out <filename>  output bitmap as <filename> (the format is taken from its extension)"  << std::endl;
 
     throw std::invalid_argument(oss.str());

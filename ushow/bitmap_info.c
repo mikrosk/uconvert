@@ -105,14 +105,14 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val, char* error)
         }
 
         // per line: the colours, then the register address of the first entry;
-        // a display routine writes 8 or 10 of them, so the block is padded
-        // with the colours the entries already hold (moved down if it would
-        // run past the end of the palette)
+        // a display routine writes 8 of them, so the block is padded with the
+        // colours the entries already hold (moved down if it would run past the
+        // end of the palette)
         const size_t entries = 1 << bitmap_info.bpp;
         const size_t k = bitmap_info.line_colors;
-        const size_t l = k <= 8 ? 8 : 10;
-        if (l > entries) {
-            sprintf(error, "Multiline palette needs more entries than the palette has.");
+        const size_t l = 8;
+        if (k > l) {
+            sprintf(error, "Multiline palette with more than %u colours per line.", (unsigned)l);
             return bitmap_info;
         }
         bitmap_info.line_writes = l;
@@ -134,7 +134,7 @@ BitmapInfo load_bitmap_info(FILE* f, const VdoValue vdo_val, char* error)
 
         for (size_t y = 0; y < bitmap_info.height; ++y) {
             uint16_t first;
-            uint32_t colors[10];
+            uint32_t colors[8];
             if (fread(&first, sizeof(first), 1, f) != 1 || fread(colors, sizeof(colors[0]), k, f) != k) {
                 sprintf(error, "Read error.");
                 return bitmap_info;

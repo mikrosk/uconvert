@@ -40,7 +40,7 @@ typedef struct {
     uint16_t    width;
     uint16_t    height;
     // multiline palette: entries rewritten before every line, 0 if none;
-    // per line a record of line_writes colours (line_colors padded to 8 or 10
+    // per line a record of line_writes colours (line_colors padded to 8
     // with colours the entries already hold) and a word with the low half of
     // the register address of the first; height + 1 records, word aligned
     uint8_t     line_colors;

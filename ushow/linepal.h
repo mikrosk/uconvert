@@ -1,7 +1,7 @@
 /* linepal.h: per-line palette blocks on Falcon VGA screens.
  *
  * A routine shows the current screen while it writes, before every image
- * line, a block of `writes` (8 or 10) consecutive palette entries:
+ * line, a block of `writes` (8) consecutive palette entries:
  *   records  h+1 records, contiguous, word aligned; record i (image line
  *            i) = `writes` colour longs (Falcon $RRGG00BB) followed by one
  *            16-bit word holding 0x9800 + 4 * first (low word of the
@@ -22,9 +22,7 @@
  * linepal_routine(): routine for a VsetMode mode and `writes`, or NULL.
  * Supported (measured on the Falcon): VGA modes (bit 4 set; PAL, overscan
  * and ST-compatible bits clear), 4 or 8 bpp, 320 or 640 columns, with or
- * without VERTFLAG (240 lines, line-doubled); writes = 10 is refused for
- * 640x480 at 8 bpp (measured margin too small: 2 to 162 wrong rows in 30
- * frames depending on the run).
+ * without VERTFLAG (240 lines, line-doubled); writes = 8 only.
  */
 #ifndef LINEPAL_H
 #define LINEPAL_H

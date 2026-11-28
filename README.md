@@ -84,7 +84,7 @@ Store 9- and 12-bit palette in 16-bit TT palette format (`0000 RRRR GGGG BBBB`).
 Store the palette the way `vq_color()` returns it: three 16-bit words per entry, each `0` - `1000`. VDI pen order instead of by colour index.
 
 ### `-linecol <num>`
-Number of palette entries (`1` - `10`) which get new colours before every line, `0` (default) keeps one palette for the whole bitmap. Before each line a block of `<num>` consecutive entries is rewritten (one `movem.l` for a raster routine), uConvert chooses where the block starts on each line; for example, `-bpp 8 -linecol 8` gives up to 256 + 8 * (height - 1) colours in the bitmap.
+Number of palette entries (`1` - `8`) which get new colours before every line, `0` (default) keeps one palette for the whole bitmap. Before each line a block of `<num>` consecutive entries is rewritten (one `movem.l` for a raster routine), uConvert chooses where the block starts on each line; for example, `-bpp 8 -linecol 8` gives up to 256 + 8 * (height - 1) colours in the bitmap.
 
 Works only with 4 and 8 bits per pixel, a Falcon palette (no `-st`, `-tt` nor `-vdi`) and an Atari bitmap (`.bpX` or `.cXX`) as output. The block starts are searched for the lowest error (every start of every line), so a 640x480 bitmap takes tens of minutes.
 
