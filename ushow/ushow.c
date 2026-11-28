@@ -84,9 +84,10 @@ static void set_vdi_palette(const BitmapInfo* bitmap_info, int16_t vdi_handle)
 // the page displayed by linepal_show()
 static const Page* linepal_page;
 
-// runs a multiline palette display routine for linepal_page (under Supexec(): no
-// stack arguments may span a switch between user and supervisor mode)
-static long linepal_show(void)
+// runs a multiline palette display routine for linepal_page in supervisor mode;
+// no arguments and not inlined, so that the routine's arguments are pushed and
+// popped within it: popped after Super(ssp) instead, they would move the stack
+static __attribute__((noinline)) long linepal_show(void)
 {
     const Page* p = linepal_page;
     const LinepalRoutine routine = linepal_routine(p->screen_info.mode, p->bitmap_info.line_writes);
@@ -106,7 +107,9 @@ static uint8_t wait_key(const Page* p, bool aes_present)
 {
     if (p->bitmap_info.line_colors) {
         linepal_page = p;
-        const long ch = Supexec(linepal_show);
+        const int32_t ssp = Super(0L);
+        const long ch = linepal_show();
+        Super(ssp);
 
         if (ch >= 0)
             return ch;
