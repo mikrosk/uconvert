@@ -13,8 +13,7 @@
  *            (0..239 on the line-doubled 240-line modes); record i is
  *            written before screen line y0+i. h >= 1, y0+h <= screen lines.
  * Returns the IKBD make code of the first key pressed, -1 when the frame
- * sync failed in 8 frames in a row, -2 when the test frame limit ran out
- * (test builds only).
+ * sync failed in 8 frames in a row.
  * Call in supervisor mode after VsetMode/VsetScreen and the full palette.
  * While it runs, interrupts are off (MFP disabled, interrupt mask 7) and
  * IKBD mouse reporting is off; everything is restored before it returns.
@@ -31,18 +30,5 @@
 
 typedef int (*LinepalRoutine)(const void* records, const uint32_t* palette, int entries, int y0, int h);
 LinepalRoutine linepal_routine(int16_t mode, int writes);   /* NULL if unsupported */
-
-#ifdef LINEPAL_TEST
-/* test builds (linepal routines assembled from deliver/test/, never commit):
- * frames until a routine restores everything and returns -2 (0: no limit);
- * frames dropped because a wait expired; frames run */
-extern int linepal_test_frames;
-extern long linepal_test_misses;
-extern long linepal_test_done;
-/* dry lines that missed, entry waits that expired, frames whose block
- * started after its first target; VFC, HHC (low words) and d3 at the last
- * miss */
-extern long linepal_test_diag[6];
-#endif
 
 #endif

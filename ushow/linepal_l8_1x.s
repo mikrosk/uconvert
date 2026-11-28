@@ -12,16 +12,6 @@ SYNC_HL			equ	56			; frame sync: half-lines before VDB
 NOSYNC_MAX		equ	8			; failed frame syncs in a row -> -1
 VDB_PAR			equ	1			; VDB parity the parity waits assume
 HL_PAL			equ	0
-TEST_NOSYNC		equ	0			; 1: skip the frame sync
-TEST_VFC_OFFSET		equ	0			; 2000: frame sync never comes
-TEST_PARBIT		equ	0			; k: k-th parity wait tests HHC bit 0
-TEST_VAL0		equ	0			; 1: HHC position 0 (no HHC wait)
-TEST_ENTRY		equ	0			; 2000: entry wait never passes
-TEST_BLKVFC		equ	0			; 2000: block VFC wait never passes
-TEST_WRAP		equ	0			; 1: HHC wrap wait never passes
-TEST_TX			equ	0			; 1: ACIA transmit wait never passes
-TEST_CPU		equ	0			; 1: expect _CPU 31 (refusal path)
-TEST_SYNC		equ	0			; 1/2: frame sync phase 1/2 never passes
 ENTRY_R			equ	$a0
 SYNC_R			equ	$a0
 VAL_W			equ	106			; = VAL_PAL
@@ -63,7 +53,7 @@ linepal_l8_1x:	movem.l	d2-d7/a2-a6,-(sp)		; 11 longs
 		addq.l	#4,a0
 		dbra	d3,.ck
 		bra	lp_ret
-.cpu:		cmp.l	#30+TEST_CPU,(a0)
+.cpu:		cmp.l	#30,(a0)
 		bne	lp_ret
 		move.l	sp,lp_sp
 		move.w	sr,lp_sr
@@ -75,7 +65,7 @@ linepal_l8_1x:	movem.l	d2-d7/a2-a6,-(sp)		; 11 longs
 		add.w	#HL_PAL,d1
 		move.w	d1,lp_first
 		move.w	$a8(a6),d1
-		sub.w	#SYNC_HL-TEST_VFC_OFFSET,d1
+		sub.w	#SYNC_HL,d1
 		move.w	d1,lp_sync
 		clr.b	lp_nosync
 		clr.b	lp_skip

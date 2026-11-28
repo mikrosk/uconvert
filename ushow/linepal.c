@@ -5,13 +5,6 @@
 int linepal_l8_1x(const void*, const uint32_t*, int, int, int);
 int linepal_l8_2x(const void*, const uint32_t*, int, int, int);
 
-#ifdef LINEPAL_TEST
-int linepal_test_frames;
-long linepal_test_misses;
-long linepal_test_done;
-long linepal_test_diag[6];
-#endif
-
 LinepalRoutine linepal_routine(int16_t mode, int writes)
 {
 	int bpp = mode & 7;		/* 2: 4 bpp, 3: 8 bpp */
